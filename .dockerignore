@@ -1,0 +1,19 @@
+# Create .dockerignore file (separate from Dockerfile)
+@'
+# Don't include these in the Docker image (keeps it small and fast)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.venv/
+venv/
+.git/
+.github/
+terraform/
+tests/
+*.md
+.gitignore
+.DS_Store
+'@ | Out-File -FilePath .dockerignore -Encoding UTF8

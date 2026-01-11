@@ -1,62 +1,58 @@
-# Variables = Inputs to your Terraform configuration
-# Think of these as function parameters
-
 variable "project_name" {
-  description = "Name of the project (used in resource naming)"
+  description = "Name of the project"
   type        = string
   default     = "cicd-portfolio"
 }
 
 variable "environment" {
-  description = "Environment name (dev, staging, prod)"
+  description = "Environment name"
   type        = string
-  # No default = you MUST provide this when running Terraform
 }
 
 variable "aws_region" {
-  description = "AWS region to deploy resources"
+  description = "AWS region"
   type        = string
-  default     = "us-east-1"  # North Virginia (cheapest, most services)
+  default     = "us-east-1"
 }
 
 variable "lambda_memory" {
-  description = "Memory allocated to Lambda function (MB)"
+  description = "Memory for Lambda function in MB"
   type        = number
-  default     = 512  # More memory = faster CPU (Lambda scales CPU with memory)
+  default     = 512
 }
 
 variable "lambda_timeout" {
-  description = "Maximum execution time for Lambda (seconds)"
+  description = "Timeout for Lambda function in seconds"
   type        = number
   default     = 30
 }
 
 variable "enable_provisioned_concurrency" {
-  description = "Enable provisioned concurrency (COSTS MONEY - see cost analysis)"
+  description = "Enable provisioned concurrency"
   type        = bool
-  default     = false  # Keep false for free tier
+  default     = false
 }
 
 variable "provisioned_concurrent_executions" {
-  description = "Number of warm Lambda instances (only if enabled above)"
+  description = "Number of provisioned concurrent executions"
   type        = number
   default     = 1
 }
 
 variable "enable_warmup" {
-  description = "Enable EventBridge warm-up pings (FREE)"
+  description = "Enable EventBridge warmup"
   type        = bool
-  default     = true  # Recommended for production
+  default     = true
 }
 
 variable "warmup_schedule" {
-  description = "How often to ping Lambda (CloudWatch cron syntax)"
+  description = "EventBridge schedule expression"
   type        = string
-  default     = "rate(5 minutes)"  # Every 5 minutes
+  default     = "rate(5 minutes)"
 }
 
 variable "log_retention_days" {
-  description = "How long to keep CloudWatch logs"
+  description = "CloudWatch log retention in days"
   type        = number
-  default     = 7  # 1 week (reduce for lower costs, but free tier is generous)
+  default     = 7
 }
