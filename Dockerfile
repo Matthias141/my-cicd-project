@@ -1,4 +1,4 @@
-﻿FROM public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.11
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
