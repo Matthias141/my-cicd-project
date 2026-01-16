@@ -7,12 +7,8 @@ resource "aws_secretsmanager_secret_version" "app_secrets" {
   secret_id = aws_secretsmanager_secret.app_secrets.id
 
   secret_string = jsonencode({
-    database_password = "changeme-in-production"
-    api_key           = "changeme-in-production"
-    jwt_secret        = "changeme-in-production"
+    database_password = var.database_password
+    api_key           = var.api_key
+    jwt_secret        = var.jwt_secret
   })
-
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
 }

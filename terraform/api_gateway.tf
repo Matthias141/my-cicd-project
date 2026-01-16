@@ -3,9 +3,9 @@ resource "aws_apigatewayv2_api" "main" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["*"]
+    allow_origins = var.allowed_origins
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["*"]
+    allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
     max_age       = 300
   }
 
@@ -34,8 +34,8 @@ resource "aws_apigatewayv2_stage" "main" {
   }
 
   default_route_settings {
-    throttling_burst_limit = 100
-    throttling_rate_limit  = 50
+    throttling_burst_limit = var.api_gateway_burst_limit
+    throttling_rate_limit  = var.api_gateway_rate_limit
   }
 }
 
