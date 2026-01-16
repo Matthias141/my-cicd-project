@@ -25,23 +25,28 @@ def health():
         'environment': os.getenv('ENVIRONMENT', 'unknown')
     }), 200
 
-# 1. Get the environment name (e.g., "dev", "yes", "staging")
-env_name = os.getenv('ENVIRONMENT')
+# 1. Get the environment name (e.g., "dev", "staging", "prod")
+# Default to 'dev' for local development if not specified
+env_name = os.getenv('ENVIRONMENT', 'dev')
 
-# 2. Register the routes with the prefix
-if env_name:
-    # This makes the routes available at /dev/, /staging/, etc.
-    app.register_blueprint(bp, url_prefix=f"/{env_name}")
-else:
-    # Fallback for local testing (no prefix)
-    app.register_blueprint(bp, url_prefix='/')
+# Log the environment for debugging
+print(f"Application starting with ENVIRONMENT={env_name}")
 
-# 3. Add a root route just in case (catches / if no prefix matches)
+# 2. Register the routes with the environment prefix
+# This makes the routes available at /{env_name}/ (e.g., /dev/, /staging/, /prod/)
+app.register_blueprint(bp, url_prefix=f"/{env_name}")
+
+# 3. Root route returns API information and available paths
 @app.route('/')
 def root():
     return jsonify({
-        'message': 'You hit the root path. Try adding the environment name.',
-        'hint': f'Go to /{env_name}/' if env_name else 'Local mode'
+        'message': 'API Gateway for AWS Lambda CI/CD Pipeline',
+        'environment': env_name,
+        'endpoints': {
+            'home': f'/{env_name}/',
+            'health': f'/{env_name}/health'
+        },
+        'hint': f'Try accessing /{env_name}/ for the main API endpoint'
     })
 
 if __name__ == '__main__':

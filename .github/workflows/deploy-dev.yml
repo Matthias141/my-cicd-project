@@ -5,9 +5,10 @@ on:
     branches:
       - main
     paths:
-      - 'app.py'
+      - 'app/**'
       - 'Dockerfile'
       - '.github/workflows/deploy-dev.yml'
+      - 'terraform/**'
 
 env:
   AWS_REGION: us-east-1
@@ -36,15 +37,18 @@ jobs:
     - name: Build, Tag, and Push Image to Amazon ECR
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: latest
+        IMAGE_TAG: ${{ github.sha }}
       run: |
         docker build --platform linux/amd64 --provenance=false -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        # Also tag as latest for reference (optional)
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest || true
 
     - name: Update Lambda Function Code
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: latest
+        IMAGE_TAG: ${{ github.sha }}
       run: |
         aws lambda update-function-code \
           --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
