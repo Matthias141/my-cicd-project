@@ -23,7 +23,7 @@ GitHub → GitHub Actions → ECR → Lambda → API Gateway → User
 ## 🛠️ Tech Stack
 
 - **Application**: Python 3.11, Flask
-- **Container**: Docker (ARM64 optimized)
+- **Container**: Docker (x86_64 architecture)
 - **Cloud**: AWS (Lambda, API Gateway, ECR, CloudWatch, Secrets Manager)
 - **IaC**: Terraform
 - **CI/CD**: GitHub Actions
@@ -102,4 +102,3 @@ This project demonstrates:
 ---
 
 ⭐ Star this repo if you find it helpful!
-'@ | Out-File -FilePath README.md -Encoding UTF8

@@ -26,10 +26,6 @@ resource "aws_lambda_function" "app" {
   # UPDATED: Commented out to prevent the "UnreservedConcurrentExecution" error
   # reserved_concurrent_executions = var.environment == "prod" ? 10 : 5
 
-  lifecycle {
-    ignore_changes = [image_uri]
-  }
-
   depends_on = [
     aws_iam_role_policy_attachment.lambda_logs
   ]
