@@ -5,6 +5,7 @@ import base64
 from pydantic import BaseModel, EmailStr, validator, Field
 from typing import Optional
 from functools import wraps
+from auth import require_api_key  # API key authentication
 
 app = Flask(__name__)
 
@@ -195,6 +196,99 @@ def get_items():
             'details': str(e)
         }), 400
 
+@bp.route('/protected', methods=['GET'])
+@require_api_key()
+def protected_endpoint():
+    """
+    Example protected endpoint requiring API key authentication
+
+    Headers required:
+    - X-API-Key: your-api-key-here
+
+    GET /<env>/protected
+    """
+    # Access API key info added by the decorator
+    api_key_info = request.api_key_info
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Access granted to protected resource',
+        'api_key_id': api_key_info['key_id'],
+        'permissions': api_key_info['permissions'],
+        'rate_limit_remaining': api_key_info.get('rate_limit_remaining', 'N/A')
+    }), 200
+
+@bp.route('/signed', methods=['POST'])
+@require_api_key(check_signature=True)
+@validate_json(UserInput)
+def signed_endpoint(validated_data: UserInput):
+    """
+    Example endpoint requiring both API key and HMAC signature
+
+    Headers required:
+    - X-API-Key: your-api-key-here
+    - X-Signature: HMAC-SHA256 signature of request body
+    - X-Timestamp: Unix timestamp (must be within 5 minutes)
+
+    POST /<env>/signed
+    {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "age": 30,
+        "message": "Signed request"
+    }
+    """
+    api_key_info = request.api_key_info
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Signed request verified successfully',
+        'api_key_id': api_key_info['key_id'],
+        'data': {
+            'name': validated_data.name,
+            'email': validated_data.email,
+            'age': validated_data.age,
+            'message': validated_data.message
+        },
+        'security': {
+            'signature_verified': True,
+            'timestamp_valid': True
+        }
+    }), 200
+
+@bp.route('/admin/stats', methods=['GET'])
+@require_api_key()
+def admin_stats():
+    """
+    Example admin endpoint with permission checking
+
+    Headers required:
+    - X-API-Key: your-api-key-here (must have 'admin' permission)
+
+    GET /<env>/admin/stats
+    """
+    api_key_info = request.api_key_info
+
+    # Check for admin permission
+    if 'admin' not in api_key_info.get('permissions', []):
+        return jsonify({
+            'error': 'Insufficient permissions',
+            'required': ['admin'],
+            'current': api_key_info.get('permissions', [])
+        }), 403
+
+    # Return admin statistics
+    return jsonify({
+        'status': 'success',
+        'stats': {
+            'total_requests': 12345,
+            'error_rate': 0.02,
+            'avg_response_time_ms': 145,
+            'active_api_keys': 5
+        },
+        'environment': os.getenv('ENVIRONMENT', 'unknown')
+    }), 200
+
 # 1. Get the environment name (e.g., "dev", "staging", "prod")
 # Default to 'dev' for local development if not specified
 env_name = os.getenv('ENVIRONMENT', 'dev')
@@ -212,9 +306,21 @@ def root():
     return jsonify({
         'message': 'API Gateway for AWS Lambda CI/CD Pipeline',
         'environment': env_name,
+        'version': os.getenv('APP_VERSION', 'dev'),
         'endpoints': {
             'home': f'/{env_name}/',
-            'health': f'/{env_name}/health'
+            'health': f'/{env_name}/health',
+            'validate': f'/{env_name}/validate (POST)',
+            'items': f'/{env_name}/items?page=1&limit=10',
+            'protected': f'/{env_name}/protected (requires X-API-Key)',
+            'signed': f'/{env_name}/signed (requires X-API-Key + X-Signature)',
+            'admin_stats': f'/{env_name}/admin/stats (requires admin permission)'
+        },
+        'security': {
+            'authentication': 'API Key (X-API-Key header)',
+            'signature': 'HMAC-SHA256 for sensitive operations',
+            'rate_limiting': 'Per API key',
+            'waf': 'AWS WAF enabled'
         },
         'hint': f'Try accessing /{env_name}/ for the main API endpoint'
     })

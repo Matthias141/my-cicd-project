@@ -5,7 +5,7 @@ resource "aws_apigatewayv2_api" "main" {
   cors_configuration {
     allow_origins = var.allowed_origins
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
+    allow_headers = ["Content-Type", "Authorization", "X-Requested-With", "X-API-Key", "X-Signature", "X-Timestamp"]
     max_age       = 300
   }
 
@@ -43,7 +43,7 @@ resource "aws_apigatewayv2_integration" "lambda" {
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "AWS_PROXY"
   integration_method     = "POST"
-  integration_uri        = aws_lambda_function.app.invoke_arn
+  integration_uri        = aws_lambda_alias.live.invoke_arn
   timeout_milliseconds   = 30000
   payload_format_version = "2.0"
 }
@@ -63,6 +63,7 @@ resource "aws_lambda_permission" "api_gw" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.app.function_name
   principal     = "apigateway.amazonaws.com"
+  qualifier     = aws_lambda_alias.live.name
 
   # This uses the 'main' api defined at the top of your file
   # The /*/* part allows any stage and any route to invoke the function

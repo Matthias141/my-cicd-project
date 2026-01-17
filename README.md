@@ -1,16 +1,17 @@
-# 🚀 Multi-Environment CI/CD Pipeline with AWS Lambda
+# 🚀 Enterprise-Grade CI/CD Pipeline with AWS Lambda
 
-A production-grade CI/CD pipeline demonstrating modern DevOps practices with serverless architecture.
+A production-grade CI/CD pipeline demonstrating modern DevOps practices, advanced deployment strategies, and comprehensive security features with serverless architecture.
 
 ## 🎯 Overview
 
 This project showcases:
-- **Serverless Architecture**: AWS Lambda + API Gateway
+- **Serverless Architecture**: AWS Lambda + API Gateway with auto-scaling
 - **Infrastructure as Code**: Terraform for all AWS resources
+- **Advanced Deployments**: Blue-green deployments with canary releases
 - **CI/CD Pipeline**: GitHub Actions with multi-environment deployment
-- **Containerization**: Docker with multi-stage builds
-- **Security**: IAM least privilege, Secrets Manager, vulnerability scanning
-- **Observability**: CloudWatch logs, metrics, alarms, and X-Ray tracing
+- **Load Testing**: Locust-based performance testing with automated analysis
+- **Security**: WAF, API authentication, input validation, vulnerability scanning
+- **Observability**: CloudWatch logs, metrics, alarms, dashboards, and X-Ray tracing
 - **Cost Optimization**: 100% free tier usage with cold start mitigation
 
 ## 🏗️ Architecture
@@ -48,14 +49,41 @@ my-cicd-project/
 
 ## 📊 Features
 
+### Core Infrastructure
 - ✅ Automated testing with pytest
-- ✅ Docker containerization
+- ✅ Docker containerization with multi-stage builds
 - ✅ Multi-environment deployment (dev/staging/prod)
-- ✅ Security vulnerability scanning
-- ✅ CloudWatch monitoring and alarms
 - ✅ Lambda warm-up system (eliminates cold starts)
-- ✅ Blue/green deployments for zero downtime
 - ✅ Cost: $0/month (within AWS free tier)
+
+### Advanced Deployment
+- ✅ **Blue-green deployments** with canary releases (10% → 25% → 50% → 100%)
+- ✅ **Automatic rollback** on error detection
+- ✅ **Lambda aliases** for traffic shifting
+- ✅ **Health checks** between deployment stages
+
+### Security & Authentication
+- ✅ **AWS WAF** with 6 security rules (rate limiting, SQL injection, XSS protection)
+- ✅ **API Key authentication** with rate limiting
+- ✅ **HMAC signature verification** for sensitive operations
+- ✅ **Input validation** using Pydantic models
+- ✅ **Security headers** (CSP, X-Frame-Options, XSS Protection, etc.)
+- ✅ **Dependency scanning** (pip-audit, Safety)
+- ✅ **Container scanning** (Trivy)
+- ✅ **Code security analysis** (Bandit)
+
+### Load Testing & Performance
+- ✅ **Locust load testing** with multiple test scenarios
+- ✅ **Automated performance benchmarks**
+- ✅ **Performance threshold validation** (500ms avg, 1% error rate)
+- ✅ **Load test reports** with recommendations
+
+### Monitoring & Observability
+- ✅ **8 CloudWatch alarms** (errors, throttles, latency, WAF blocks)
+- ✅ **SNS notifications** for critical alerts
+- ✅ **CloudWatch dashboard** with real-time metrics
+- ✅ **X-Ray distributed tracing**
+- ✅ **Comprehensive logging** with structured output
 
 ## 🔐 Security
 
@@ -82,16 +110,37 @@ my-cicd-project/
 - CloudWatch: 5GB logs free tier
 - EventBridge: Free for scheduled rules
 
+## 📚 Documentation
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Comprehensive deployment guide
+  - Blue-green deployments with canary releases
+  - Load testing procedures and analysis
+  - API authentication (API key + HMAC signatures)
+  - Performance monitoring and troubleshooting
+
+- **[SECURITY.md](SECURITY.md)** - Security features and best practices
+  - WAF configuration and rules
+  - Input validation with Pydantic
+  - Dependency and container scanning
+  - Incident response procedures
+
+- **[README_ADVANCED.md](README_ADVANCED.md)** - Advanced features and architecture
+  - Detailed architecture diagrams
+  - Performance metrics and benchmarks
+  - Cost analysis and optimization
+  - Scalability patterns
+
 ## 🎓 Learning Outcomes
 
 This project demonstrates:
-- Modern serverless architecture patterns
-- Infrastructure as Code best practices
-- CI/CD pipeline design and implementation
-- AWS cloud services integration
-- Container optimization techniques
-- Security and observability patterns
-- Cost optimization strategies
+- **Advanced DevOps**: Blue-green deployments, canary releases, automatic rollback
+- **Modern Security**: WAF, API authentication, input validation, vulnerability scanning
+- **Performance Engineering**: Load testing, performance benchmarks, optimization
+- **Infrastructure as Code**: Terraform best practices, multi-environment setup
+- **CI/CD Excellence**: Automated testing, security scanning, deployment pipelines
+- **Serverless Architecture**: Lambda optimization, cold start mitigation, auto-scaling
+- **Observability**: Comprehensive monitoring, alerting, and logging
+- **Cost Optimization**: Free tier maximization, resource efficiency
 
 ## 👤 Author
 
