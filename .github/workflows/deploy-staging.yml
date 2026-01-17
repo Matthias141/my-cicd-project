@@ -70,7 +70,7 @@ jobs:
         severity: 'CRITICAL,HIGH'
 
     - name: Upload Trivy Results to GitHub Security
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
 
