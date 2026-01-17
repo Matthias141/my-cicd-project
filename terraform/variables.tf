@@ -92,3 +92,11 @@ variable "api_gateway_rate_limit" {
   type        = number
   default     = 50
 }
+
+variable "alert_email" {
+  description = "Email address for CloudWatch alarm notifications (leave empty to skip email notifications)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
