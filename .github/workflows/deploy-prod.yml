@@ -1,0 +1,173 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      confirm_deployment:
+        description: 'Type "DEPLOY" to confirm production deployment'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: cicd-portfolio-prod-app
+  LAMBDA_FUNCTION_NAME: cicd-portfolio-prod-api
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validate Deployment Confirmation
+      run: |
+        if [ "${{ github.event.inputs.confirm_deployment }}" != "DEPLOY" ]; then
+          echo "❌ Deployment cancelled: Confirmation not provided"
+          echo "Please type 'DEPLOY' to confirm production deployment"
+          exit 1
+        fi
+        echo "✅ Deployment confirmed"
+
+  security-audit:
+    runs-on: ubuntu-latest
+    needs: validate-input
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Run Comprehensive Security Scan
+      run: |
+        pip install pip-audit safety bandit
+
+        echo "🔍 Running pip-audit..."
+        pip-audit -r app/requirements.txt
+
+        echo "🔍 Running Safety check..."
+        safety check -r app/requirements.txt
+
+        echo "🔍 Running Bandit (code security analysis)..."
+        bandit -r app/ -f json -o bandit-report.json || true
+
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: security-audit
+    environment:
+      name: production
+      url: https://YOUR_PROD_API_URL.execute-api.us-east-1.amazonaws.com
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build and Scan Production Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: prod-${{ github.sha }}
+      run: |
+        # Build image
+        docker build --platform linux/amd64 --provenance=false -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+
+        # Run Trivy scan before pushing
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy image \
+          --severity CRITICAL,HIGH \
+          --exit-code 1 \
+          $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+        # If scan passes, push image
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+    - name: Blue-Green Deployment Preparation
+      run: |
+        echo "📦 Preparing blue-green deployment..."
+        # Create alias for current version (blue)
+        aws lambda publish-version --function-name ${{ env.LAMBDA_FUNCTION_NAME }} || true
+
+    - name: Update Lambda Function (Green)
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: prod-${{ github.sha }}
+      run: |
+        echo "🚀 Deploying new version (green)..."
+        aws lambda update-function-code \
+          --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+          --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+        # Wait for update to complete
+        aws lambda wait function-updated \
+          --function-name ${{ env.LAMBDA_FUNCTION_NAME }}
+
+    - name: Run Production Smoke Tests
+      run: |
+        API_URL="https://YOUR_PROD_API_URL.execute-api.us-east-1.amazonaws.com"
+
+        echo "🧪 Running production smoke tests..."
+
+        # Test 1: Health check
+        HEALTH=$(curl -s -o /dev/null -w "%{http_code}" $API_URL/prod/health)
+        if [ $HEALTH -ne 200 ]; then
+          echo "❌ Health check failed"
+          exit 1
+        fi
+        echo "✅ Health check passed"
+
+        # Test 2: Main endpoint
+        MAIN=$(curl -s -o /dev/null -w "%{http_code}" $API_URL/prod/)
+        if [ $MAIN -ne 200 ]; then
+          echo "❌ Main endpoint failed"
+          exit 1
+        fi
+        echo "✅ Main endpoint passed"
+
+        # Test 3: Response time check
+        RESPONSE_TIME=$(curl -s -w "%{time_total}" -o /dev/null $API_URL/prod/health)
+        echo "⏱️  Response time: ${RESPONSE_TIME}s"
+
+    - name: Monitor for Errors (5 min)
+      run: |
+        echo "👀 Monitoring CloudWatch for errors..."
+        sleep 300  # Monitor for 5 minutes
+
+        # Check for errors in last 5 minutes
+        ERROR_COUNT=$(aws logs filter-log-events \
+          --log-group-name /aws/lambda/${{ env.LAMBDA_FUNCTION_NAME }} \
+          --start-time $(($(date +%s) - 300))000 \
+          --filter-pattern "ERROR" \
+          --query 'events[*].message' \
+          --output text | wc -l)
+
+        if [ $ERROR_COUNT -gt 0 ]; then
+          echo "⚠️  Warning: $ERROR_COUNT errors detected"
+        else
+          echo "✅ No errors detected"
+        fi
+
+    - name: Deployment Summary
+      if: success()
+      run: |
+        echo "🎉 Production deployment successful!"
+        echo "=================================="
+        echo "Commit: ${{ github.sha }}"
+        echo "Deployed by: ${{ github.actor }}"
+        echo "Timestamp: $(date)"
+        echo "Environment: production"
+        echo "=================================="

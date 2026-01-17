@@ -1,0 +1,109 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-staging.yml'
+      - 'terraform/**'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: cicd-portfolio-staging-app
+  LAMBDA_FUNCTION_NAME: cicd-portfolio-staging-api
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Run pip-audit (Dependency Vulnerability Scan)
+      run: |
+        pip install pip-audit
+        pip-audit -r app/requirements.txt || true
+
+    - name: Run Safety (Dependency Security Check)
+      run: |
+        pip install safety
+        safety check -r app/requirements.txt || true
+
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    needs: security-scan
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, Tag, and Push Image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build --platform linux/amd64 --provenance=false -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest || true
+
+    - name: Run Trivy Container Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy Results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Update Lambda Function Code
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        aws lambda update-function-code \
+          --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+          --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Run Smoke Tests
+      run: |
+        # Wait for Lambda to update
+        sleep 10
+
+        # Get API URL (you'll need to set this as a secret or output from Terraform)
+        API_URL="https://YOUR_STAGING_API_URL.execute-api.us-east-1.amazonaws.com"
+
+        # Test health endpoint
+        HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $API_URL/staging/health)
+
+        if [ $HEALTH_RESPONSE -eq 200 ]; then
+          echo "✅ Smoke test passed: Health check returned 200"
+        else
+          echo "❌ Smoke test failed: Health check returned $HEALTH_RESPONSE"
+          exit 1
+        fi
+
+    - name: Notify Deployment Success
+      if: success()
+      run: |
+        echo "🎉 Staging deployment successful!"
+        echo "Commit: ${{ github.sha }}"
+        echo "Deployed by: ${{ github.actor }}"
