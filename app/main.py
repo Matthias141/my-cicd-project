@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, Blueprint
 import os
-from mangum import Mangum  # Adapter for AWS Lambda
+import awsgi  # WSGI adapter for AWS Lambda
 
 app = Flask(__name__)
 
@@ -54,5 +54,6 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 # ENTRY POINT FOR AWS LAMBDA
-# This wraps the Flask app so Lambda can speak to it
-handler = Mangum(app)
+# This wraps the Flask WSGI app for Lambda
+def handler(event, context):
+    return awsgi.response(app, event, context)
