@@ -3,10 +3,13 @@ resource "aws_lambda_function" "app" {
   role          = aws_iam_role.lambda_execution.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.app.repository_url}:latest"
-  
+
   # UPDATED: Matches the "linux/amd64" docker build we did earlier
   architectures = ["x86_64"]
-  
+
+  # Enable versioning for blue-green deployments
+  publish       = true
+
   memory_size   = var.lambda_memory
   timeout       = var.lambda_timeout
 
