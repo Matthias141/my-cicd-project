@@ -35,6 +35,9 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     needs: security-scan
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
     - name: Checkout Code
