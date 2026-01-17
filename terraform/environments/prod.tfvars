@@ -18,6 +18,6 @@ log_retention_days = 30
 enable_warmup = true
 warmup_schedule = "rate(3 minutes)"
 
-# CORS - Strict domain restriction for production
-# Update this with your actual production domain
-allowed_origins = ["https://yourdomain.com", "https://www.yourdomain.com"]
+# CORS - Update this with your actual production domain for stricter security
+# Using wildcard for portfolio demo, replace with real domains in production
+allowed_origins = ["*"]
