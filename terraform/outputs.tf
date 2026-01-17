@@ -24,7 +24,7 @@ output "cloudwatch_dashboard_url" {
 }
 
 output "cloudwatch_log_group" {
-  value       = aws_cloudwatch_log_group.lambda.name
+  value       = aws_cloudwatch_log_group.lambda_logs.name
   description = "CloudWatch log group"
 }
 
