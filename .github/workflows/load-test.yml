@@ -1,0 +1,249 @@
+name: Load Test
+
+on:
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      users:
+        description: 'Number of concurrent users'
+        required: true
+        default: '50'
+      spawn_rate:
+        description: 'Users spawned per second'
+        required: true
+        default: '5'
+      duration:
+        description: 'Test duration (e.g., 2m, 30s)'
+        required: true
+        default: '2m'
+      test_type:
+        description: 'Test type'
+        required: true
+        default: 'baseline'
+        type: choice
+        options:
+          - baseline    # Normal load
+          - stress      # High load
+          - spike       # Sudden traffic increase
+          - endurance   # Sustained load
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Dependencies
+      run: |
+        pip install -r tests/requirements-loadtest.txt
+
+    - name: Get API URL
+      id: get-url
+      run: |
+        if [ "${{ github.event.inputs.environment }}" == "dev" ]; then
+          echo "API_URL=https://i8px6fb3aj.execute-api.us-east-1.amazonaws.com" >> $GITHUB_OUTPUT
+        elif [ "${{ github.event.inputs.environment }}" == "staging" ]; then
+          echo "API_URL=https://YOUR_STAGING_API_URL.execute-api.us-east-1.amazonaws.com" >> $GITHUB_OUTPUT
+        else
+          echo "API_URL=https://YOUR_PROD_API_URL.execute-api.us-east-1.amazonaws.com" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Configure Test Parameters
+      id: configure
+      run: |
+        case "${{ github.event.inputs.test_type }}" in
+          "baseline")
+            echo "USERS=50" >> $GITHUB_OUTPUT
+            echo "SPAWN_RATE=5" >> $GITHUB_OUTPUT
+            echo "DURATION=2m" >> $GITHUB_OUTPUT
+            ;;
+          "stress")
+            echo "USERS=200" >> $GITHUB_OUTPUT
+            echo "SPAWN_RATE=20" >> $GITHUB_OUTPUT
+            echo "DURATION=3m" >> $GITHUB_OUTPUT
+            ;;
+          "spike")
+            echo "USERS=500" >> $GITHUB_OUTPUT
+            echo "SPAWN_RATE=100" >> $GITHUB_OUTPUT
+            echo "DURATION=1m" >> $GITHUB_OUTPUT
+            ;;
+          "endurance")
+            echo "USERS=100" >> $GITHUB_OUTPUT
+            echo "SPAWN_RATE=10" >> $GITHUB_OUTPUT
+            echo "DURATION=10m" >> $GITHUB_OUTPUT
+            ;;
+        esac
+
+    - name: Run Load Test
+      env:
+        API_URL: ${{ steps.get-url.outputs.API_URL }}
+        USERS: ${{ github.event.inputs.users || steps.configure.outputs.USERS }}
+        SPAWN_RATE: ${{ github.event.inputs.spawn_rate || steps.configure.outputs.SPAWN_RATE }}
+        DURATION: ${{ github.event.inputs.duration || steps.configure.outputs.DURATION }}
+      run: |
+        echo "🚀 Starting Load Test"
+        echo "Environment: ${{ github.event.inputs.environment }}"
+        echo "Test Type: ${{ github.event.inputs.test_type }}"
+        echo "API URL: $API_URL"
+        echo "Users: $USERS"
+        echo "Spawn Rate: $SPAWN_RATE"
+        echo "Duration: $DURATION"
+        echo ""
+
+        mkdir -p load-test-results
+
+        locust -f tests/load_test.py \
+          --headless \
+          --users $USERS \
+          --spawn-rate $SPAWN_RATE \
+          --run-time $DURATION \
+          --host=$API_URL \
+          --html=load-test-results/report.html \
+          --csv=load-test-results/results \
+          --exit-code-on-error 0 \
+          | tee load-test-results/output.log
+
+    - name: Analyze Results
+      run: |
+        echo "📊 Analyzing Load Test Results"
+
+        python3 << 'PYTHON_SCRIPT'
+        import pandas as pd
+        import json
+        from datetime import datetime
+
+        # Read CSV results
+        try:
+            stats = pd.read_csv('load-test-results/results_stats.csv')
+            history = pd.read_csv('load-test-results/results_stats_history.csv')
+
+            # Calculate key metrics
+            total_requests = stats['Request Count'].sum()
+            total_failures = stats['Failure Count'].sum()
+            failure_rate = (total_failures / total_requests * 100) if total_requests > 0 else 0
+            avg_response_time = stats['Average Response Time'].mean()
+            max_response_time = stats['Max Response Time'].max()
+
+            p95 = stats['95%'].mean() if '95%' in stats.columns else 0
+            p99 = stats['99%'].mean() if '99%' in stats.columns else 0
+
+            requests_per_sec = history['Requests/s'].mean()
+
+            # Create summary
+            summary = {
+                "timestamp": datetime.now().isoformat(),
+                "environment": "${{ github.event.inputs.environment }}",
+                "test_type": "${{ github.event.inputs.test_type }}",
+                "metrics": {
+                    "total_requests": int(total_requests),
+                    "total_failures": int(total_failures),
+                    "failure_rate_percent": round(failure_rate, 2),
+                    "avg_response_time_ms": round(avg_response_time, 2),
+                    "max_response_time_ms": round(max_response_time, 2),
+                    "p95_response_time_ms": round(p95, 2),
+                    "p99_response_time_ms": round(p99, 2),
+                    "requests_per_second": round(requests_per_sec, 2)
+                },
+                "thresholds": {
+                    "avg_response_time_threshold_ms": 500,
+                    "error_rate_threshold_percent": 1.0
+                },
+                "passed": failure_rate <= 1.0 and avg_response_time <= 500
+            }
+
+            # Save JSON summary
+            with open('load-test-results/summary.json', 'w') as f:
+                json.dump(summary, f, indent=2)
+
+            print("\n" + "="*60)
+            print("📊 LOAD TEST SUMMARY")
+            print("="*60)
+            print(f"Environment: {summary['environment']}")
+            print(f"Test Type: {summary['test_type']}")
+            print(f"\nMetrics:")
+            print(f"  Total Requests: {summary['metrics']['total_requests']:,}")
+            print(f"  Total Failures: {summary['metrics']['total_failures']:,}")
+            print(f"  Failure Rate: {summary['metrics']['failure_rate_percent']}%")
+            print(f"  Avg Response Time: {summary['metrics']['avg_response_time_ms']}ms")
+            print(f"  Max Response Time: {summary['metrics']['max_response_time_ms']}ms")
+            print(f"  P95 Response Time: {summary['metrics']['p95_response_time_ms']}ms")
+            print(f"  P99 Response Time: {summary['metrics']['p99_response_time_ms']}ms")
+            print(f"  Throughput: {summary['metrics']['requests_per_second']} req/s")
+            print(f"\nTest Result: {'✅ PASSED' if summary['passed'] else '❌ FAILED'}")
+            print("="*60 + "\n")
+
+        except Exception as e:
+            print(f"Error analyzing results: {e}")
+
+        PYTHON_SCRIPT
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: load-test-results-${{ github.event.inputs.environment }}-${{ github.event.inputs.test_type }}
+        path: load-test-results/
+        retention-days: 30
+
+    - name: Comment Results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = JSON.parse(fs.readFileSync('load-test-results/summary.json', 'utf8'));
+
+          const comment = `## 📊 Load Test Results
+
+          **Environment:** ${summary.environment}
+          **Test Type:** ${summary.test_type}
+
+          ### Metrics
+          | Metric | Value | Threshold | Status |
+          |--------|-------|-----------|--------|
+          | Total Requests | ${summary.metrics.total_requests.toLocaleString()} | - | - |
+          | Failure Rate | ${summary.metrics.failure_rate_percent}% | ≤ ${summary.thresholds.error_rate_threshold_percent}% | ${summary.metrics.failure_rate_percent <= summary.thresholds.error_rate_threshold_percent ? '✅' : '❌'} |
+          | Avg Response Time | ${summary.metrics.avg_response_time_ms}ms | ≤ ${summary.thresholds.avg_response_time_threshold_ms}ms | ${summary.metrics.avg_response_time_ms <= summary.thresholds.avg_response_time_threshold_ms ? '✅' : '❌'} |
+          | P95 Response Time | ${summary.metrics.p95_response_time_ms}ms | - | - |
+          | P99 Response Time | ${summary.metrics.p99_response_time_ms}ms | - | - |
+          | Throughput | ${summary.metrics.requests_per_second} req/s | - | - |
+
+          **Overall Result:** ${summary.passed ? '✅ PASSED' : '❌ FAILED'}
+
+          📄 [View Full Report](../actions/runs/${context.runId})
+          `;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+    - name: Fail if Thresholds Not Met
+      run: |
+        if [ -f load-test-results/summary.json ]; then
+          PASSED=$(python3 -c "import json; print(json.load(open('load-test-results/summary.json'))['passed'])")
+          if [ "$PASSED" != "True" ]; then
+            echo "❌ Load test failed to meet performance thresholds"
+            exit 1
+          fi
+        fi
