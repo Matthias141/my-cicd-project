@@ -3,6 +3,15 @@ name: Terraform Deploy Infrastructure
 on:
   workflow_dispatch:  # Manual trigger
     inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
       action:
         description: 'Terraform action (plan/apply/destroy)'
         required: true
@@ -28,6 +37,17 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
 
+    - name: Validate Production Deployment
+      if: github.event.inputs.environment == 'prod' && github.event.inputs.action != 'plan'
+      run: |
+        echo "⚠️  WARNING: You are about to ${{ github.event.inputs.action }} PRODUCTION infrastructure!"
+        echo "Environment: ${{ github.event.inputs.environment }}"
+        echo "Action: ${{ github.event.inputs.action }}"
+        echo ""
+        echo "This action will affect production resources."
+        echo "Proceeding in 10 seconds... (Cancel now if this was a mistake)"
+        sleep 10
+
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
@@ -49,36 +69,42 @@ jobs:
     - name: Terraform Plan
       if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
       env:
-        TF_VAR_environment: dev
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
         TF_VAR_api_key: ${{ secrets.API_KEY }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
-        TF_VAR_allowed_origins: '["*"]'
-      run: terraform plan -out=tfplan
+      run: |
+        echo "📋 Planning infrastructure for ${{ github.event.inputs.environment }} environment..."
+        terraform plan -var-file="environments/${{ github.event.inputs.environment }}.tfvars" -out=tfplan
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
       env:
-        TF_VAR_environment: dev
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
         TF_VAR_api_key: ${{ secrets.API_KEY }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
-        TF_VAR_allowed_origins: '["*"]'
-      run: terraform apply -auto-approve tfplan
+      run: |
+        echo "🚀 Deploying infrastructure for ${{ github.event.inputs.environment }} environment..."
+        terraform apply -auto-approve tfplan
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
       env:
-        TF_VAR_environment: dev
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
         TF_VAR_api_key: ${{ secrets.API_KEY }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
-        TF_VAR_allowed_origins: '["*"]'
-      run: terraform destroy -auto-approve
+      run: |
+        echo "🗑️  Destroying infrastructure for ${{ github.event.inputs.environment }} environment..."
+        terraform destroy -var-file="environments/${{ github.event.inputs.environment }}.tfvars" -auto-approve
 
     - name: Output Infrastructure Details
       if: github.event.inputs.action == 'apply'
       run: |
+        echo "### 🎉 ${{ github.event.inputs.environment }} Infrastructure Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Terraform Outputs" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         terraform output >> $GITHUB_STEP_SUMMARY
