@@ -1,7 +1,116 @@
-from flask import Flask, jsonify, Blueprint
+from flask import Flask, jsonify, Blueprint, request, make_response
 import os
 import json
 import base64
+from pydantic import BaseModel, EmailStr, validator, Field
+from typing import Optional
+from functools import wraps
+
+app = Flask(__name__)
+
+# ==============================================================================
+# SECURITY HEADERS MIDDLEWARE
+# ==============================================================================
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    # Prevent clickjacking attacks
+    response.headers['X-Frame-Options'] = 'DENY'
+
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+
+    # Enable XSS protection
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+
+    # Content Security Policy
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+
+    # Prevent sensitive data caching
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+
+    # Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+    # Permissions Policy (formerly Feature-Policy)
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+
+    return response
+
+# ==============================================================================
+# PYDANTIC MODELS FOR INPUT VALIDATION
+# ==============================================================================
+
+class UserInput(BaseModel):
+    """Example Pydantic model for user input validation"""
+    name: str = Field(..., min_length=1, max_length=100, description="User name")
+    email: EmailStr = Field(..., description="Valid email address")
+    age: Optional[int] = Field(None, ge=0, le=150, description="User age")
+    message: Optional[str] = Field(None, max_length=500, description="User message")
+
+    @validator('name')
+    def name_must_not_contain_special_chars(cls, v):
+        """Prevent injection attacks in name field"""
+        if any(char in v for char in ['<', '>', '&', '"', "'"]):
+            raise ValueError('Name contains invalid characters')
+        return v.strip()
+
+    @validator('message')
+    def message_sanitize(cls, v):
+        """Sanitize message field"""
+        if v and any(char in v for char in ['<script', '<iframe', 'javascript:']):
+            raise ValueError('Message contains potentially dangerous content')
+        return v
+
+class QueryParams(BaseModel):
+    """Example model for query parameter validation"""
+    page: int = Field(1, ge=1, le=1000, description="Page number")
+    limit: int = Field(10, ge=1, le=100, description="Items per page")
+    search: Optional[str] = Field(None, max_length=200, description="Search query")
+
+# ==============================================================================
+# VALIDATION DECORATOR
+# ==============================================================================
+
+def validate_json(model: BaseModel):
+    """Decorator to validate JSON input against Pydantic model"""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            try:
+                # Get JSON data from request
+                data = request.get_json(force=True)
+
+                # Validate with Pydantic
+                validated_data = model(**data)
+
+                # Add validated data to kwargs
+                kwargs['validated_data'] = validated_data
+
+                return f(*args, **kwargs)
+
+            except ValueError as e:
+                return jsonify({
+                    'error': 'Validation failed',
+                    'details': str(e),
+                    'status': 'error'
+                }), 400
+            except Exception as e:
+                return jsonify({
+                    'error': 'Invalid JSON',
+                    'details': 'Request body must be valid JSON',
+                    'status': 'error'
+                }), 400
+
+        return wrapper
+    return decorator
+
+# ==============================================================================
+# APPLICATION ROUTES
+# ==============================================================================
 
 app = Flask(__name__)
 
@@ -25,6 +134,66 @@ def health():
         'status': 'healthy',
         'environment': os.getenv('ENVIRONMENT', 'unknown')
     }), 200
+
+@bp.route('/validate', methods=['POST'])
+@validate_json(UserInput)
+def validate_input(validated_data: UserInput):
+    """
+    Example endpoint demonstrating Pydantic input validation
+
+    POST /<env>/validate
+    {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "age": 30,
+        "message": "Hello world"
+    }
+    """
+    return jsonify({
+        'status': 'success',
+        'message': 'Input validated successfully',
+        'data': {
+            'name': validated_data.name,
+            'email': validated_data.email,
+            'age': validated_data.age,
+            'message': validated_data.message
+        }
+    }), 200
+
+@bp.route('/items', methods=['GET'])
+def get_items():
+    """
+    Example endpoint with query parameter validation
+
+    GET /<env>/items?page=1&limit=10&search=test
+    """
+    try:
+        # Get query parameters
+        params = QueryParams(
+            page=request.args.get('page', 1),
+            limit=request.args.get('limit', 10),
+            search=request.args.get('search')
+        )
+
+        # Simulate data response
+        return jsonify({
+            'status': 'success',
+            'pagination': {
+                'page': params.page,
+                'limit': params.limit,
+                'search': params.search
+            },
+            'items': [
+                {'id': 1, 'name': 'Item 1'},
+                {'id': 2, 'name': 'Item 2'}
+            ]
+        }), 200
+
+    except ValueError as e:
+        return jsonify({
+            'error': 'Invalid query parameters',
+            'details': str(e)
+        }), 400
 
 # 1. Get the environment name (e.g., "dev", "staging", "prod")
 # Default to 'dev' for local development if not specified
