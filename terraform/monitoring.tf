@@ -1,5 +1,13 @@
 # CloudWatch Alarms and SNS Notifications for Production Monitoring
 
+# CloudWatch Log Group for Lambda
+resource "aws_cloudwatch_log_group" "lambda_logs" {
+  name              = "/aws/lambda/${local.name_prefix}-api"
+  retention_in_days = var.log_retention_days
+
+  tags = local.common_tags
+}
+
 # SNS Topic for Alerts
 resource "aws_sns_topic" "alerts" {
   name              = "${local.name_prefix}-alerts"

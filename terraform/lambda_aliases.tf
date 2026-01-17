@@ -69,11 +69,6 @@ resource "aws_cloudwatch_metric_alarm" "green_version_errors" {
 }
 
 # Outputs for deployment scripts
-output "lambda_function_name" {
-  description = "Lambda function name"
-  value       = aws_lambda_function.app.function_name
-}
-
 output "blue_alias_name" {
   description = "Blue alias name"
   value       = aws_lambda_alias.blue.name
