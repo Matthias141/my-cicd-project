@@ -18,6 +18,5 @@ log_retention_days = 14
 enable_warmup = true
 warmup_schedule = "rate(5 minutes)"
 
-# CORS - More restrictive for staging
-# Update this with your actual staging domain
-allowed_origins = ["https://staging.yourdomain.com"]
+# CORS - Allow all origins for testing (update with your actual staging domain later)
+allowed_origins = ["*"]
