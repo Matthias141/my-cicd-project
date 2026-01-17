@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, Blueprint
 import os
-import awsgi  # WSGI adapter for AWS Lambda
+import json
+import base64
 
 app = Flask(__name__)
 
@@ -54,6 +55,59 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 # ENTRY POINT FOR AWS LAMBDA
-# This wraps the Flask WSGI app for Lambda
+# Custom WSGI adapter for Flask on Lambda
 def handler(event, context):
-    return awsgi.response(app, event, context)
+    # Extract request details from Lambda event (API Gateway format)
+    http_method = event.get('requestContext', {}).get('http', {}).get('method', 'GET')
+    path = event.get('rawPath', '/')
+    headers = event.get('headers', {})
+    query_string = event.get('rawQueryString', '')
+    body = event.get('body', '')
+    is_base64 = event.get('isBase64Encoded', False)
+
+    # Decode body if base64 encoded
+    if is_base64 and body:
+        body = base64.b64decode(body).decode('utf-8')
+
+    # Create WSGI environ
+    environ = {
+        'REQUEST_METHOD': http_method,
+        'SCRIPT_NAME': '',
+        'PATH_INFO': path,
+        'QUERY_STRING': query_string,
+        'CONTENT_TYPE': headers.get('content-type', ''),
+        'CONTENT_LENGTH': str(len(body)) if body else '0',
+        'SERVER_NAME': headers.get('host', 'lambda'),
+        'SERVER_PORT': '443',
+        'SERVER_PROTOCOL': 'HTTP/1.1',
+        'wsgi.version': (1, 0),
+        'wsgi.url_scheme': 'https',
+        'wsgi.input': body,
+        'wsgi.errors': '',
+        'wsgi.multithread': False,
+        'wsgi.multiprocess': False,
+        'wsgi.run_once': False,
+    }
+
+    # Add HTTP headers to environ
+    for key, value in headers.items():
+        key = 'HTTP_' + key.upper().replace('-', '_')
+        environ[key] = value
+
+    # Call Flask app with test client
+    with app.test_client() as client:
+        response = client.open(
+            path=path,
+            method=http_method,
+            headers=headers,
+            query_string=query_string,
+            data=body
+        )
+
+        # Convert Flask response to Lambda response format
+        return {
+            'statusCode': response.status_code,
+            'headers': dict(response.headers),
+            'body': response.get_data(as_text=True),
+            'isBase64Encoded': False
+        }
