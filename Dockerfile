@@ -9,8 +9,9 @@ RUN yum update -y libpng glib2 python3-pip && \
 # Copy requirements first to leverage Docker cache
 COPY app/requirements.txt ${LAMBDA_TASK_ROOT}/
 
-# Upgrade pip to latest version to fix CVE-2025-8869
-RUN pip install --upgrade pip
+# Upgrade pip and setuptools to latest versions
+# Fixes: CVE-2025-8869 (pip), GHSA-58pv-8j8x-9vj2 (jaraco.context path traversal)
+RUN pip install --upgrade pip setuptools
 
 # Install dependencies (including Mangum)
 RUN pip install --no-cache-dir -r requirements.txt
