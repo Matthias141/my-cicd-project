@@ -96,6 +96,14 @@
         "s3:*"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "DynamoDBPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:*"
+      ],
+      "Resource": "*"
     }
   ]
 }
