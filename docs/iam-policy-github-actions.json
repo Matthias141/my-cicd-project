@@ -50,10 +50,18 @@
         "iam:ListRolePolicies",
         "iam:ListAttachedRolePolicies",
         "iam:TagRole",
-        "iam:UntagRole"
+        "iam:UntagRole",
+        "iam:CreatePolicy",
+        "iam:DeletePolicy",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:TagPolicy",
+        "iam:UntagPolicy"
       ],
       "Resource": [
-        "arn:aws:iam::*:role/cicd-portfolio-*"
+        "arn:aws:iam::*:role/cicd-portfolio-*",
+        "arn:aws:iam::*:policy/cicd-portfolio-*"
       ]
     },
     {
