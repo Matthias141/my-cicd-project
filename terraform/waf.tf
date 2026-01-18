@@ -171,10 +171,13 @@ resource "aws_wafv2_web_acl" "api_waf" {
 }
 
 # Associate WAF with API Gateway
-resource "aws_wafv2_web_acl_association" "api_gateway" {
-  resource_arn = aws_apigatewayv2_stage.main.arn
-  web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
-}
+# NOTE: WAF v2 only supports REST APIs (v1), not HTTP APIs (v2)
+# Commenting out association - WAF is created but not enforced
+# To enable: switch to aws_api_gateway_rest_api or use ALB instead
+# resource "aws_wafv2_web_acl_association" "api_gateway" {
+#   resource_arn = aws_apigatewayv2_stage.main.arn
+#   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
+# }
 
 # CloudWatch Log Group for WAF logs
 resource "aws_cloudwatch_log_group" "waf_logs" {
@@ -187,7 +190,7 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 # WAF Logging Configuration
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
   resource_arn            = aws_wafv2_web_acl.api_waf.arn
-  log_destination_configs = ["${aws_cloudwatch_log_group.waf_logs.arn}:*"]
+  log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
   redacted_fields {
     single_header {
