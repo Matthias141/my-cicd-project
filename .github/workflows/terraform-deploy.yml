@@ -66,6 +66,13 @@ jobs:
     - name: Terraform Validate
       run: terraform validate
 
+    - name: Import Existing Resources
+      if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
+      run: |
+        echo "🔍 Importing existing resources to prevent conflicts..."
+        chmod +x ../scripts/terraform-import-existing.sh
+        ../scripts/terraform-import-existing.sh ${{ github.event.inputs.environment }}
+
     - name: Terraform Plan
       if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
       env:
