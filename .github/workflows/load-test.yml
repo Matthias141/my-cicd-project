@@ -196,7 +196,7 @@ jobs:
         PYTHON_SCRIPT
 
     - name: Upload Test Results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: load-test-results-${{ github.event.inputs.environment }}-${{ github.event.inputs.test_type }}
