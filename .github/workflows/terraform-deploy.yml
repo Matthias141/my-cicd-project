@@ -71,6 +71,13 @@ jobs:
         echo "🔧 Initializing Terraform with S3 backend for ${{ github.event.inputs.environment }}..."
         terraform init -backend-config="key=env/${{ github.event.inputs.environment }}/terraform.tfstate"
 
+    - name: Import Existing Resources into S3 State
+      if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
+      run: |
+        echo "🔍 Importing existing AWS resources into Terraform S3 state..."
+        chmod +x ../scripts/terraform-import-existing.sh
+        ../scripts/terraform-import-existing.sh ${{ github.event.inputs.environment }}
+
     - name: Terraform Validate
       run: terraform validate
 
