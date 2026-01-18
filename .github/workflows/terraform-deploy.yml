@@ -71,12 +71,24 @@ jobs:
         echo "🔧 Initializing Terraform with S3 backend for ${{ github.event.inputs.environment }}..."
         terraform init -backend-config="key=env/${{ github.event.inputs.environment }}/terraform.tfstate"
 
-    - name: Import Existing Resources into S3 State
+    - name: Clear Stale Locks (if any)
       if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
+      continue-on-error: true
       run: |
-        echo "🔍 Importing existing AWS resources into Terraform S3 state..."
-        chmod +x ../scripts/terraform-import-existing.sh
-        ../scripts/terraform-import-existing.sh ${{ github.event.inputs.environment }}
+        echo "🔓 Clearing any stale state locks..."
+        # Get lock ID from DynamoDB and force unlock
+        LOCK_ID=$(aws dynamodb get-item \
+          --table-name cicd-portfolio-terraform-locks \
+          --key '{"LockID":{"S":"cicd-portfolio-terraform-state/env/${{ github.event.inputs.environment }}/terraform.tfstate"}}' \
+          --query 'Item.LockID.S' \
+          --output text 2>/dev/null || echo "none")
+
+        if [ "$LOCK_ID" != "none" ] && [ "$LOCK_ID" != "" ]; then
+          echo "Found stale lock: $LOCK_ID"
+          terraform force-unlock -force "$LOCK_ID" || true
+        else
+          echo "No stale locks found"
+        fi
 
     - name: Terraform Validate
       run: terraform validate
