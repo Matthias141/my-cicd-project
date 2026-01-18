@@ -81,14 +81,21 @@ jobs:
           --table-name cicd-portfolio-terraform-locks \
           --key '{"LockID":{"S":"cicd-portfolio-terraform-state/env/${{ github.event.inputs.environment }}/terraform.tfstate"}}' \
           --query 'Item.LockID.S' \
-          --output text 2>/dev/null || echo "none")
+          --output text 2>/dev/null || echo "")
 
-        if [ "$LOCK_ID" != "none" ] && [ "$LOCK_ID" != "" ]; then
+        if [ -n "$LOCK_ID" ] && [ "$LOCK_ID" != "None" ] && [ "$LOCK_ID" != "none" ]; then
           echo "Found stale lock: $LOCK_ID"
           terraform force-unlock -force "$LOCK_ID" || true
         else
           echo "No stale locks found"
         fi
+
+    - name: Import Existing ECR Repository
+      if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
+      continue-on-error: true
+      run: |
+        echo "📦 Importing existing ECR repository if it exists..."
+        terraform import aws_ecr_repository.app cicd-portfolio-${{ github.event.inputs.environment }}-app || echo "ECR not found or already imported"
 
     - name: Terraform Validate
       run: terraform validate
