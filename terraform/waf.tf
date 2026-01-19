@@ -37,7 +37,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
   }
 
   # Rule 2: SQL Injection (Expanded Scope)
-  # Checks Body, URL, Query String, and Cookies
   rule {
     name     = "SQLInjectionProtection"
     priority = 2
@@ -103,7 +102,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
   }
 
   # Rule 3: XSS Protection (Expanded Scope)
-  # Checks Body, URL, Query String, and Cookies
   rule {
     name     = "XSSProtection"
     priority = 3
@@ -146,7 +144,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
             }
           }
         }
-         # Check 3: Cookie Header (Scans all cookies)
+         # Check 3: Cookie Header
         statement {
           xss_match_statement {
             field_to_match {
@@ -180,7 +178,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     priority = 4
 
     action {
-      count {} # Count only for now
+      count {} # Count only
     }
 
     statement {
@@ -255,7 +253,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
 # CloudWatch Log Group for WAF logs
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "waf_logs" {
-  # FIX: Must start with "aws-waf-logs-" for WAF logging to work
   name              = "aws-waf-logs-${local.name_prefix}"
   retention_in_days = var.log_retention_days
 
@@ -268,14 +265,17 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
   resource_arn = aws_wafv2_web_acl.api_waf.arn
   
-  # FIX: Removed ":*" suffix from ARN
   log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
+  # Redaction 1: Authorization Header
   redacted_fields {
     single_header {
       name = "authorization"
     }
-    # Also redact cookies if they contain sensitive session IDs
+  }
+
+  # Redaction 2: Cookie Header (Must be in its own block)
+  redacted_fields {
     single_header {
       name = "cookie"
     }
@@ -283,10 +283,9 @@ resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
 }
 
 # -----------------------------------------------------------------------------
-# Associate WAF with API Gateway (HTTP or REST)
+# Associate WAF with API Gateway
 # -----------------------------------------------------------------------------
 resource "aws_wafv2_web_acl_association" "api_gateway" {
-  # Ensure "aws_apigatewayv2_stage.main" is defined in your other .tf files
   resource_arn = aws_apigatewayv2_stage.main.arn
   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
 }
