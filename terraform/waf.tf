@@ -24,7 +24,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
 
     statement {
       rate_based_statement {
-        limit              = 2000  # requests per 5 minutes per IP
+        limit              = 2000 # requests per 5 minutes per IP
         aggregate_key_type = "IP"
       }
     }
@@ -36,7 +36,8 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 2: Block common SQL injection attempts
+  # Rule 2: SQL Injection (Expanded Scope)
+  # Checks Body, URL, Query String, and Cookies
   rule {
     name     = "SQLInjectionProtection"
     priority = 2
@@ -46,13 +47,50 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
 
     statement {
-      sqli_match_statement {
-        field_to_match {
-          query_string {}
+      or_statement {
+        # Check 1: Query String
+        statement {
+          sqli_match_statement {
+            field_to_match {
+              query_string {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
         }
-        text_transformation {
-          priority = 1
-          type     = "URL_DECODE"
+        # Check 2: Request Body
+        statement {
+          sqli_match_statement {
+            field_to_match {
+              body {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
+        }
+        # Check 3: URI Path
+        statement {
+          sqli_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+          }
         }
       }
     }
@@ -64,7 +102,8 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 3: Block XSS attacks
+  # Rule 3: XSS Protection (Expanded Scope)
+  # Checks Body, URL, Query String, and Cookies
   rule {
     name     = "XSSProtection"
     priority = 3
@@ -74,13 +113,56 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
 
     statement {
-      xss_match_statement {
-        field_to_match {
-          query_string {}
+      or_statement {
+        # Check 1: Query String
+        statement {
+          xss_match_statement {
+            field_to_match {
+              query_string {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
         }
-        text_transformation {
-          priority = 1
-          type     = "URL_DECODE"
+        # Check 2: Request Body
+        statement {
+          xss_match_statement {
+            field_to_match {
+              body {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
+        }
+         # Check 3: Cookie Header (Scans all cookies)
+        statement {
+          xss_match_statement {
+            field_to_match {
+              single_header {
+                name = "cookie"
+              }
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
         }
       }
     }
@@ -92,19 +174,18 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 4: Geo-blocking (optional - can be configured per environment)
+  # Rule 4: Geo-blocking (optional)
   rule {
     name     = "GeoBlockRule"
     priority = 4
 
     action {
-      count {}  # Count only, don't block (can change to block {} in production)
+      count {} # Count only for now
     }
 
     statement {
       geo_match_statement {
-        # Block requests from high-risk countries (example)
-        country_codes = ["CN", "RU", "KP"]  # China, Russia, North Korea
+        country_codes = ["CN", "RU", "KP"]
       }
     }
 
@@ -170,31 +251,42 @@ resource "aws_wafv2_web_acl" "api_waf" {
   tags = local.common_tags
 }
 
-# Associate WAF with API Gateway
-# NOTE: WAF v2 only supports REST APIs (v1), not HTTP APIs (v2)
-# Commenting out association - WAF is created but not enforced
-# To enable: switch to aws_api_gateway_rest_api or use ALB instead
-# resource "aws_wafv2_web_acl_association" "api_gateway" {
-#   resource_arn = aws_apigatewayv2_stage.main.arn
-#   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
-# }
-
+# -----------------------------------------------------------------------------
 # CloudWatch Log Group for WAF logs
+# -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "waf_logs" {
-  name              = "/aws/waf/${local.name_prefix}"
+  # FIX: Must start with "aws-waf-logs-" for WAF logging to work
+  name              = "aws-waf-logs-${local.name_prefix}"
   retention_in_days = var.log_retention_days
 
   tags = local.common_tags
 }
 
+# -----------------------------------------------------------------------------
 # WAF Logging Configuration
+# -----------------------------------------------------------------------------
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
-  resource_arn            = aws_wafv2_web_acl.api_waf.arn
-  log_destination_configs = ["${aws_cloudwatch_log_group.waf_logs.arn}:*"]
+  resource_arn = aws_wafv2_web_acl.api_waf.arn
+  
+  # FIX: Removed ":*" suffix from ARN
+  log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
   redacted_fields {
     single_header {
       name = "authorization"
     }
+    # Also redact cookies if they contain sensitive session IDs
+    single_header {
+      name = "cookie"
+    }
   }
+}
+
+# -----------------------------------------------------------------------------
+# Associate WAF with API Gateway (HTTP or REST)
+# -----------------------------------------------------------------------------
+resource "aws_wafv2_web_acl_association" "api_gateway" {
+  # Ensure "aws_apigatewayv2_stage.main" is defined in your other .tf files
+  resource_arn = aws_apigatewayv2_stage.main.arn
+  web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
 }
