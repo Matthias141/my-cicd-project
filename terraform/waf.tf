@@ -188,6 +188,37 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
   tags = local.common_tags
 }
 
+# CloudWatch Logs Resource Policy for WAF
+# This allows WAF to write logs to CloudWatch
+resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
+  policy_name = "${local.name_prefix}-waf-logs-policy"
+
+  policy_document = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "wafv2.amazonaws.com"
+        }
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.waf_logs.arn}:*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = aws_wafv2_web_acl.api_waf.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
 # WAF Logging Configuration
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
   resource_arn            = aws_wafv2_web_acl.api_waf.arn
@@ -198,4 +229,6 @@ resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
       name = "authorization"
     }
   }
+
+  depends_on = [aws_cloudwatch_log_resource_policy.waf_logs_policy]
 }
