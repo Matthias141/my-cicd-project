@@ -1,4 +1,4 @@
-# AWS WAF (Web Application Firewall) for API Gateway Protection
+# AWS WAF (Web Application Firewall)
 
 resource "aws_wafv2_web_acl" "api_waf" {
   name        = "${local.name_prefix}-waf"
@@ -9,7 +9,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     allow {}
   }
 
-  # Rule 1: Rate limiting to prevent DDoS
+  # Rule 1: Rate limiting
   rule {
     name     = "RateLimitRule"
     priority = 1
@@ -24,7 +24,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
 
     statement {
       rate_based_statement {
-        limit              = 2000 # requests per 5 minutes per IP
+        limit              = 2000
         aggregate_key_type = "IP"
       }
     }
@@ -36,7 +36,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 2: SQL Injection (Expanded Scope)
+  # Rule 2: SQL Injection
   rule {
     name     = "SQLInjectionProtection"
     priority = 2
@@ -47,7 +47,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
 
     statement {
       or_statement {
-        # Check 1: Query String
         statement {
           sqli_match_statement {
             field_to_match {
@@ -63,7 +62,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
             }
           }
         }
-        # Check 2: Request Body
         statement {
           sqli_match_statement {
             field_to_match {
@@ -79,7 +77,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
             }
           }
         }
-        # Check 3: URI Path
         statement {
           sqli_match_statement {
             field_to_match {
@@ -101,7 +98,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 3: XSS Protection (Expanded Scope)
+  # Rule 3: XSS Protection
   rule {
     name     = "XSSProtection"
     priority = 3
@@ -112,7 +109,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
 
     statement {
       or_statement {
-        # Check 1: Query String
         statement {
           xss_match_statement {
             field_to_match {
@@ -128,7 +124,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
             }
           }
         }
-        # Check 2: Request Body
         statement {
           xss_match_statement {
             field_to_match {
@@ -144,7 +139,6 @@ resource "aws_wafv2_web_acl" "api_waf" {
             }
           }
         }
-         # Check 3: Cookie Header
         statement {
           xss_match_statement {
             field_to_match {
@@ -172,13 +166,13 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 4: Geo-blocking (optional)
+  # Rule 4: Geo-blocking
   rule {
     name     = "GeoBlockRule"
     priority = 4
 
     action {
-      count {} # Count only
+      count {}
     }
 
     statement {
@@ -194,7 +188,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 5: AWS Managed Rules - Core Rule Set
+  # Rule 5: AWS Managed Rules (Common)
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 5
@@ -217,7 +211,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 6: AWS Managed Rules - Known Bad Inputs
+  # Rule 6: AWS Managed Rules (Bad Inputs)
   rule {
     name     = "AWSManagedRulesKnownBadInputsRuleSet"
     priority = 6
@@ -263,18 +257,15 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 # WAF Logging Configuration
 # -----------------------------------------------------------------------------
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
-  resource_arn = aws_wafv2_web_acl.api_waf.arn
-  
+  resource_arn            = aws_wafv2_web_acl.api_waf.arn
   log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
-  # Redaction 1: Authorization Header
   redacted_fields {
     single_header {
       name = "authorization"
     }
   }
-
-  # Redaction 2: Cookie Header (Must be in its own block)
+  
   redacted_fields {
     single_header {
       name = "cookie"
@@ -283,9 +274,14 @@ resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
 }
 
 # -----------------------------------------------------------------------------
-# Associate WAF with API Gateway
+# WAF Association (DISABLED)
 # -----------------------------------------------------------------------------
-resource "aws_wafv2_web_acl_association" "api_gateway" {
-  resource_arn = aws_apigatewayv2_stage.main.arn
-  web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
-}
+# NOTE: Direct association with HTTP APIs (API Gateway v2) is NOT supported by AWS WAFv2.
+# To protect this API, you must either:
+# 1. Place a CloudFront distribution in front of this API and attach WAF there.
+# 2. Switch from HTTP API (v2) to REST API (v1).
+
+# resource "aws_wafv2_web_acl_association" "api_gateway" {
+#   resource_arn = aws_apigatewayv2_stage.main.arn
+#   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
+# }
