@@ -189,7 +189,7 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 }
 
 # CloudWatch Logs Resource Policy for WAF
-# This allows WAF to write logs to CloudWatch
+# This allows WAF v2 to write logs to CloudWatch via the logs delivery service
 resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
   policy_name = "${local.name_prefix}-waf-logs-policy"
 
@@ -199,7 +199,7 @@ resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
       {
         Effect = "Allow"
         Principal = {
-          Service = "wafv2.amazonaws.com"
+          Service = "delivery.logs.amazonaws.com"
         }
         Action = [
           "logs:CreateLogStream",
@@ -211,7 +211,7 @@ resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
           }
           ArnLike = {
-            "aws:SourceArn" = aws_wafv2_web_acl.api_waf.arn
+            "aws:SourceArn" = "arn:aws:wafv2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
           }
         }
       }
@@ -220,9 +220,10 @@ resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
 }
 
 # WAF Logging Configuration
+# Note: log_destination_configs must use exact ARN without :* suffix
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
   resource_arn            = aws_wafv2_web_acl.api_waf.arn
-  log_destination_configs = ["${aws_cloudwatch_log_group.waf_logs.arn}:*"]
+  log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
   redacted_fields {
     single_header {
@@ -230,5 +231,8 @@ resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
     }
   }
 
-  depends_on = [aws_cloudwatch_log_resource_policy.waf_logs_policy]
+  depends_on = [
+    aws_cloudwatch_log_group.waf_logs,
+    aws_cloudwatch_log_resource_policy.waf_logs_policy
+  ]
 }
