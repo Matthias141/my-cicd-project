@@ -1,0 +1,102 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Get Current Versions
+      id: versions
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment }}-api"
+
+        # Get live (current production) version
+        LIVE_VERSION=$(aws lambda get-alias \
+          --function-name $FUNCTION_NAME \
+          --name live \
+          --region ${{ env.AWS_REGION }} \
+          --query 'FunctionVersion' \
+          --output text)
+
+        # Get blue (previous stable) version
+        BLUE_VERSION=$(aws lambda get-alias \
+          --function-name $FUNCTION_NAME \
+          --name blue \
+          --region ${{ env.AWS_REGION }} \
+          --query 'FunctionVersion' \
+          --output text)
+
+        echo "live-version=$LIVE_VERSION" >> $GITHUB_OUTPUT
+        echo "blue-version=$BLUE_VERSION" >> $GITHUB_OUTPUT
+
+        echo "Current live version: $LIVE_VERSION"
+        echo "Previous blue version: $BLUE_VERSION"
+
+    - name: Confirm Rollback
+      run: |
+        echo "⚠️  WARNING: Rolling back from v${{ steps.versions.outputs.live-version }} to v${{ steps.versions.outputs.blue-version }}"
+        echo "This will revert the live traffic to the previous stable version."
+
+    - name: Rollback to Blue Version
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment }}-api"
+        BLUE_VERSION="${{ steps.versions.outputs.blue-version }}"
+
+        echo "Rolling back live alias to version $BLUE_VERSION..."
+        aws lambda update-alias \
+          --function-name $FUNCTION_NAME \
+          --name live \
+          --function-version $BLUE_VERSION \
+          --region ${{ env.AWS_REGION }}
+
+    - name: Verify Rollback
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment }}-api"
+
+        # Invoke the rolled-back version
+        RESPONSE=$(aws lambda invoke \
+          --function-name $FUNCTION_NAME:live \
+          --payload '{"httpMethod":"GET","path":"/health","headers":{}}' \
+          --region ${{ env.AWS_REGION }} \
+          /tmp/health.json)
+
+        STATUS=$(echo $RESPONSE | jq -r '.StatusCode')
+
+        if [ "$STATUS" != "200" ]; then
+          echo "❌ Rollback verification failed"
+          exit 1
+        fi
+
+        echo "✅ Rollback successful and verified"
+
+    - name: Send Notification
+      run: |
+        echo "### ⏪ Rollback Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Rolled back from:** v${{ steps.versions.outputs.live-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Rolled back to:** v${{ steps.versions.outputs.blue-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY

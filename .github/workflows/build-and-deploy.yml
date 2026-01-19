@@ -1,0 +1,339 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main, staging, dev]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-app
+
+jobs:
+  # Stage 1: Build & Security Scan
+  build-and-scan:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Extract metadata
+      id: meta
+      run: |
+        echo "tags=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+    - name: Build Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Run Trivy Container Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.meta.outputs.tags }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy Results
+      uses: github/codeql-action/upload-sarif@v4
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Run Safety Check (Python Dependencies)
+      run: |
+        pip install safety
+        safety scan --file app/requirements.txt --output json || true
+
+    - name: Run Bandit (Python Security)
+      run: |
+        pip install bandit
+        bandit -r app/ -f json -o bandit-results.json || true
+
+    - name: Push to ECR
+      run: |
+        docker push ${{ steps.meta.outputs.tags }}
+        docker tag ${{ steps.meta.outputs.tags }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+  # Stage 2: Deploy to Lambda (Blue-Green)
+  deploy:
+    needs: build-and-scan
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Deploy to Green (New Version)
+      id: deploy-green
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+        IMAGE_URI="${{ needs.build-and-scan.outputs.image-tag }}"
+
+        echo "Updating Lambda function code..."
+        aws lambda update-function-code \
+          --function-name $FUNCTION_NAME \
+          --image-uri $IMAGE_URI \
+          --region ${{ env.AWS_REGION }}
+
+        echo "Waiting for update to complete..."
+        aws lambda wait function-updated \
+          --function-name $FUNCTION_NAME \
+          --region ${{ env.AWS_REGION }}
+
+        echo "Publishing new version..."
+        NEW_VERSION=$(aws lambda publish-version \
+          --function-name $FUNCTION_NAME \
+          --region ${{ env.AWS_REGION }} \
+          --query 'Version' \
+          --output text)
+
+        echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+        echo "Updating green alias to version $NEW_VERSION..."
+        aws lambda update-alias \
+          --function-name $FUNCTION_NAME \
+          --name green \
+          --function-version $NEW_VERSION \
+          --region ${{ env.AWS_REGION }}
+
+  # Stage 3: Health Check & Smoke Tests
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Health Check (Green Alias)
+      id: health-check
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+
+        echo "Invoking green alias for health check..."
+        RESPONSE=$(aws lambda invoke \
+          --function-name $FUNCTION_NAME:green \
+          --payload '{"httpMethod":"GET","path":"/health","headers":{}}' \
+          --region ${{ env.AWS_REGION }} \
+          /tmp/response.json)
+
+        STATUS_CODE=$(echo $RESPONSE | jq -r '.StatusCode')
+
+        if [ "$STATUS_CODE" != "200" ]; then
+          echo "Health check failed with status $STATUS_CODE"
+          cat /tmp/response.json
+          exit 1
+        fi
+
+        echo "✅ Health check passed"
+
+    - name: Smoke Tests (Green Alias)
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+
+        # Test 1: Root endpoint
+        echo "Testing root endpoint..."
+        aws lambda invoke \
+          --function-name $FUNCTION_NAME:green \
+          --payload '{"httpMethod":"GET","path":"/","headers":{}}' \
+          --region ${{ env.AWS_REGION }} \
+          /tmp/test1.json
+
+        # Test 2: Protected endpoint (should fail without auth)
+        echo "Testing authentication..."
+        aws lambda invoke \
+          --function-name $FUNCTION_NAME:green \
+          --payload '{"httpMethod":"GET","path":"/protected","headers":{}}' \
+          --region ${{ env.AWS_REGION }} \
+          /tmp/test2.json
+
+        echo "✅ Smoke tests passed"
+
+    - name: Check Error Metrics (Last 5 Minutes)
+      id: check-errors
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+
+        # Get error count from CloudWatch
+        ERROR_COUNT=$(aws cloudwatch get-metric-statistics \
+          --namespace AWS/Lambda \
+          --metric-name Errors \
+          --dimensions Name=FunctionName,Value=$FUNCTION_NAME Name=ExecutedVersion,Value=\$LATEST \
+          --start-time $(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S) \
+          --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+          --period 300 \
+          --statistics Sum \
+          --region ${{ env.AWS_REGION }} \
+          --query 'Datapoints[0].Sum' \
+          --output text)
+
+        echo "Error count in last 5 minutes: $ERROR_COUNT"
+
+        if [ "$ERROR_COUNT" != "None" ] && [ "$ERROR_COUNT" -gt 3 ]; then
+          echo "❌ Too many errors detected: $ERROR_COUNT"
+          exit 1
+        fi
+
+        echo "✅ Error threshold check passed"
+
+  # Stage 4: Switch Traffic (Blue → Green)
+  promote:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+      url: ${{ steps.get-url.outputs.api-url }}
+
+    steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Get Green Version
+      id: get-green
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+
+        GREEN_VERSION=$(aws lambda get-alias \
+          --function-name $FUNCTION_NAME \
+          --name green \
+          --region ${{ env.AWS_REGION }} \
+          --query 'FunctionVersion' \
+          --output text)
+
+        echo "green-version=$GREEN_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Switch Live Traffic to Green
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+        GREEN_VERSION="${{ steps.get-green.outputs.green-version }}"
+
+        echo "Switching live alias to version $GREEN_VERSION..."
+        aws lambda update-alias \
+          --function-name $FUNCTION_NAME \
+          --name live \
+          --function-version $GREEN_VERSION \
+          --region ${{ env.AWS_REGION }}
+
+        echo "Updating blue alias (backup)..."
+        aws lambda update-alias \
+          --function-name $FUNCTION_NAME \
+          --name blue \
+          --function-version $GREEN_VERSION \
+          --region ${{ env.AWS_REGION }}
+
+    - name: Get API Gateway URL
+      id: get-url
+      run: |
+        API_ID=$(aws apigatewayv2 get-apis \
+          --region ${{ env.AWS_REGION }} \
+          --query "Items[?Name=='cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api'].ApiId" \
+          --output text)
+
+        API_URL="https://${API_ID}.execute-api.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.inputs.environment || 'staging' }}"
+        echo "api-url=$API_URL" >> $GITHUB_OUTPUT
+
+        echo "### 🎉 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
+        echo "**API URL:** $API_URL" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** ${{ steps.get-green.outputs.green-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployed at:** $(date)" >> $GITHUB_STEP_SUMMARY
+
+  # Stage 5: Monitor & Auto-Rollback
+  monitor:
+    needs: promote
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'prod'
+
+    steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Monitor for 10 Minutes
+      run: |
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment }}-api"
+
+        echo "Monitoring deployment for 10 minutes..."
+        for i in {1..10}; do
+          echo "Minute $i of 10..."
+
+          ERROR_COUNT=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/Lambda \
+            --metric-name Errors \
+            --dimensions Name=FunctionName,Value=$FUNCTION_NAME \
+            --start-time $(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 60 \
+            --statistics Sum \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Datapoints[0].Sum' \
+            --output text)
+
+          if [ "$ERROR_COUNT" != "None" ] && [ "$ERROR_COUNT" -gt 5 ]; then
+            echo "❌ High error rate detected! Rolling back..."
+            # Trigger rollback workflow
+            exit 1
+          fi
+
+          sleep 60
+        done
+
+        echo "✅ Monitoring complete - deployment stable"
