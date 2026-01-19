@@ -65,15 +65,22 @@ jobs:
 
     - name: Terraform Plan
       working-directory: terraform
+      env:
+        TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
+        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "📋 Planning infrastructure changes..."
         terraform plan \
           -var="environment=${{ github.event.inputs.environment || 'staging' }}" \
-          -var="app_version=${{ github.sha }}" \
           -out=tfplan
 
     - name: Terraform Apply
       working-directory: terraform
+      env:
+        TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
+        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "🚀 Applying infrastructure changes..."
         terraform apply -auto-approve tfplan
