@@ -22,7 +22,7 @@ aws dynamodb delete-item \
 echo "Deleting CloudWatch Log Groups..."
 aws logs delete-log-group --log-group-name "/aws/apigateway/${PROJECT_NAME}-${ENVIRONMENT}" --region ${REGION} 2>/dev/null || echo "  ⊘ Not found"
 aws logs delete-log-group --log-group-name "/aws/lambda/${PROJECT_NAME}-${ENVIRONMENT}-api" --region ${REGION} 2>/dev/null || echo "  ⊘ Not found"
-aws logs delete-log-group --log-group-name "/aws/waf/${PROJECT_NAME}-${ENVIRONMENT}" --region ${REGION} 2>/dev/null || echo "  ⊘ Not found"
+aws logs delete-log-group --log-group-name "aws-wafv2-logs-${PROJECT_NAME}-${ENVIRONMENT}" --region ${REGION} 2>/dev/null || echo "  ⊘ Not found"
 
 # Delete Secrets (force delete)
 echo "Deleting Secrets..."

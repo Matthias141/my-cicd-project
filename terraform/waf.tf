@@ -180,8 +180,9 @@ resource "aws_wafv2_web_acl" "api_waf" {
 # }
 
 # CloudWatch Log Group for WAF logs
+# IMPORTANT: WAF v2 requires log group names to start with "aws-wafv2-logs-"
 resource "aws_cloudwatch_log_group" "waf_logs" {
-  name              = "/aws/waf/${local.name_prefix}"
+  name              = "aws-wafv2-logs-${local.name_prefix}"
   retention_in_days = var.log_retention_days
 
   tags = local.common_tags
@@ -190,7 +191,7 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 # WAF Logging Configuration
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
   resource_arn            = aws_wafv2_web_acl.api_waf.arn
-  log_destination_configs = ["${aws_cloudwatch_log_group.waf_logs.arn}:*"]
+  log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
   redacted_fields {
     single_header {
