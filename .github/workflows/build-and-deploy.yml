@@ -20,8 +20,77 @@ env:
   ECR_REPOSITORY: cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-app
 
 jobs:
+  # Stage 0: Deploy Infrastructure (Terraform)
+  infrastructure:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+
+    - name: Setup Terraform Backend (S3 + DynamoDB)
+      working-directory: terraform
+      run: |
+        echo "🚀 Setting up Terraform backend..."
+        chmod +x ../scripts/setup-terraform-backend.sh
+        ../scripts/setup-terraform-backend.sh
+
+    - name: Terraform Init
+      working-directory: terraform
+      run: |
+        echo "🔧 Initializing Terraform with S3 backend..."
+        terraform init -backend-config="key=env/${{ github.event.inputs.environment || 'staging' }}/terraform.tfstate"
+
+    - name: Clear Stale Locks (if any)
+      working-directory: terraform
+      continue-on-error: true
+      run: |
+        echo "🔓 Clearing any stale state locks..."
+        aws dynamodb delete-item \
+          --table-name cicd-portfolio-terraform-locks \
+          --key '{"LockID":{"S":"cicd-portfolio-terraform-state/env/${{ github.event.inputs.environment || 'staging' }}/terraform.tfstate"}}' \
+          --region ${{ env.AWS_REGION }} 2>/dev/null && echo "Lock cleared" || echo "No lock found"
+
+    - name: Terraform Plan
+      working-directory: terraform
+      run: |
+        echo "📋 Planning infrastructure changes..."
+        terraform plan \
+          -var="environment=${{ github.event.inputs.environment || 'staging' }}" \
+          -var="app_version=${{ github.sha }}" \
+          -out=tfplan
+
+    - name: Terraform Apply
+      working-directory: terraform
+      run: |
+        echo "🚀 Applying infrastructure changes..."
+        terraform apply -auto-approve tfplan
+
+    - name: Verify Infrastructure
+      run: |
+        echo "✅ Verifying Lambda function exists..."
+        FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
+        aws lambda get-function --function-name $FUNCTION_NAME --region ${{ env.AWS_REGION }} || {
+          echo "❌ Lambda function not found after Terraform apply!"
+          exit 1
+        }
+        echo "✅ Lambda function exists: $FUNCTION_NAME"
+
   # Stage 1: Build & Security Scan
   build-and-scan:
+    needs: infrastructure
     runs-on: ubuntu-latest
     permissions:
       contents: read
