@@ -23,6 +23,10 @@ jobs:
   # Stage 1: Build & Security Scan
   build-and-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
 
