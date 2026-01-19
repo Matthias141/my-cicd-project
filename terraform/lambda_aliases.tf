@@ -30,17 +30,12 @@ resource "aws_lambda_alias" "live" {
   name             = "live"
   description      = "Production traffic endpoint"
   function_name    = aws_lambda_function.app.function_name
-  function_version = aws_lambda_alias.blue.function_version
+  function_version = "$LATEST"
 
-  # Routing configuration for canary deployments
-  # This allows gradual traffic shifting from blue to green
-  routing_config {
-    additional_version_weights = {
-      # Initially, green gets 0% traffic
-      # Deployment script will update this to 10%, 25%, 50%, 100%
-      (aws_lambda_alias.green.function_version) = 0.0
-    }
-  }
+  # NOTE: routing_config is omitted initially because it requires actual version numbers (1, 2, 3...)
+  # $LATEST cannot be used in routing_config.additional_version_weights
+  # The deployment workflow will add routing configuration dynamically via AWS CLI
+  # when performing canary deployments with real version numbers
 
   lifecycle {
     ignore_changes = [function_version, routing_config]
