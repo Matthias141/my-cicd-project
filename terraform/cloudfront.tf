@@ -117,3 +117,70 @@ resource "aws_cloudfront_distribution" "api" {
   custom_error_response {
     error_code            = 503
     response_code         = 503
+    response_page_path    = "/error"
+    error_caching_min_ttl = 0
+  }
+
+  custom_error_response {
+    error_code            = 504
+    response_code         = 504
+    response_page_path    = "/error"
+    error_caching_min_ttl = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+    minimum_protocol_version       = "TLSv1.2_2021"
+    ssl_support_method             = "sni-only"
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${local.name_prefix}-cloudfront"
+    }
+  )
+}
+
+# --------------------------------------------------------------------------
+# WAF Association
+# --------------------------------------------------------------------------
+resource "aws_wafv2_web_acl_association" "cloudfront" {
+  resource_arn = aws_cloudfront_distribution.api.arn
+  web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
+}
+
+# CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "cloudfront_logs" {
+  name              = "/aws/cloudfront/${local.name_prefix}"
+  retention_in_days = var.log_retention_days
+
+  tags = local.common_tags
+}
+
+# Outputs
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID"
+  value       = aws_cloudfront_distribution.api.id
+}
+
+output "cloudfront_distribution_arn" {
+  description = "CloudFront distribution ARN"
+  value       = aws_cloudfront_distribution.api.arn
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.api.domain_name
+}
+
+output "cloudfront_distribution_url" {
+  description = "CloudFront distribution URL"
+  value       = "https://${aws_cloudfront_distribution.api.domain_name}"
+}
