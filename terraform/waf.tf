@@ -1,5 +1,4 @@
-# AWS WAF (Web Application Firewall) for CloudFront
-# NOTE: CloudFront requires CLOUDFRONT scope WAF (must be in us-east-1)
+# AWS WAF (Web Application Firewall)
 
 resource "aws_wafv2_web_acl" "api_waf" {
   name        = "${local.name_prefix}-waf"
@@ -11,7 +10,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     allow {}
   }
 
-  # Rule 1: Rate limiting to prevent DDoS
+  # Rule 1: Rate limiting
   rule {
     name     = "RateLimitRule"
     priority = 1
@@ -26,7 +25,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
 
     statement {
       rate_based_statement {
-        limit              = 2000  # requests per 5 minutes per IP
+        limit              = 2000
         aggregate_key_type = "IP"
       }
     }
@@ -38,7 +37,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 2: Block common SQL injection attempts
+  # Rule 2: SQL Injection
   rule {
     name     = "SQLInjectionProtection"
     priority = 2
@@ -48,13 +47,47 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
 
     statement {
-      sqli_match_statement {
-        field_to_match {
-          query_string {}
+      or_statement {
+        statement {
+          sqli_match_statement {
+            field_to_match {
+              query_string {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
         }
-        text_transformation {
-          priority = 1
-          type     = "URL_DECODE"
+        statement {
+          sqli_match_statement {
+            field_to_match {
+              body {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
+        }
+        statement {
+          sqli_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+          }
         }
       }
     }
@@ -66,7 +99,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 3: Block XSS attacks
+  # Rule 3: XSS Protection
   rule {
     name     = "XSSProtection"
     priority = 3
@@ -76,13 +109,53 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
 
     statement {
-      xss_match_statement {
-        field_to_match {
-          query_string {}
+      or_statement {
+        statement {
+          xss_match_statement {
+            field_to_match {
+              query_string {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
         }
-        text_transformation {
-          priority = 1
-          type     = "URL_DECODE"
+        statement {
+          xss_match_statement {
+            field_to_match {
+              body {}
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
+        }
+        statement {
+          xss_match_statement {
+            field_to_match {
+              single_header {
+                name = "cookie"
+              }
+            }
+            text_transformation {
+              priority = 1
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 2
+              type     = "HTML_ENTITY_DECODE"
+            }
+          }
         }
       }
     }
@@ -94,19 +167,18 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 4: Geo-blocking (optional - can be configured per environment)
+  # Rule 4: Geo-blocking
   rule {
     name     = "GeoBlockRule"
     priority = 4
 
     action {
-      count {}  # Count only, don't block (can change to block {} in production)
+      count {}
     }
 
     statement {
       geo_match_statement {
-        # Block requests from high-risk countries (example)
-        country_codes = ["CN", "RU", "KP"]  # China, Russia, North Korea
+        country_codes = ["CN", "RU", "KP"]
       }
     }
 
@@ -117,7 +189,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 5: AWS Managed Rules - Core Rule Set
+  # Rule 5: AWS Managed Rules (Common)
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 5
@@ -140,7 +212,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
     }
   }
 
-  # Rule 6: AWS Managed Rules - Known Bad Inputs
+  # Rule 6: AWS Managed Rules (Bad Inputs)
   rule {
     name     = "AWSManagedRulesKnownBadInputsRuleSet"
     priority = 6
@@ -172,60 +244,19 @@ resource "aws_wafv2_web_acl" "api_waf" {
   tags = local.common_tags
 }
 
-# Associate WAF with API Gateway
-# NOTE: WAF v2 only supports REST APIs (v1), not HTTP APIs (v2)
-# Commenting out association - WAF is created but not enforced
-# To enable: switch to aws_api_gateway_rest_api or use ALB instead
-# resource "aws_wafv2_web_acl_association" "api_gateway" {
-#   resource_arn = aws_apigatewayv2_stage.main.arn
-#   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
-# }
-
+# -----------------------------------------------------------------------------
 # CloudWatch Log Group for WAF logs
-# IMPORTANT: For CloudFront WAF, log group must be in us-east-1
-# Log group name must start with "aws-waf-logs-" (not aws-wafv2-logs-)
+# -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "waf_logs" {
-  provider          = aws.us_east_1  # Must be in us-east-1 for CloudFront WAF
   name              = "aws-waf-logs-${local.name_prefix}"
   retention_in_days = var.log_retention_days
 
   tags = local.common_tags
 }
 
-# CloudWatch Logs Resource Policy for WAF
-# This allows WAF v2 to write logs to CloudWatch via the logs delivery service
-resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
-  provider    = aws.us_east_1  # Must be in us-east-1 for CloudFront WAF
-  policy_name = "${local.name_prefix}-waf-logs-policy"
-
-  policy_document = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action = [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "${aws_cloudwatch_log_group.waf_logs.arn}:*"
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-          ArnLike = {
-            "aws:SourceArn" = "arn:aws:wafv2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
-          }
-        }
-      }
-    ]
-  })
-}
-
+# -----------------------------------------------------------------------------
 # WAF Logging Configuration
-# Note: log_destination_configs must use exact ARN without :* suffix
+# -----------------------------------------------------------------------------
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
   resource_arn            = aws_wafv2_web_acl.api_waf.arn
   log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
@@ -235,9 +266,23 @@ resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
       name = "authorization"
     }
   }
-
-  depends_on = [
-    aws_cloudwatch_log_group.waf_logs,
-    aws_cloudwatch_log_resource_policy.waf_logs_policy
-  ]
+  
+  redacted_fields {
+    single_header {
+      name = "cookie"
+    }
+  }
 }
+
+# -----------------------------------------------------------------------------
+# WAF Association (DISABLED)
+# -----------------------------------------------------------------------------
+# NOTE: Direct association with HTTP APIs (API Gateway v2) is NOT supported by AWS WAFv2.
+# To protect this API, you must either:
+# 1. Place a CloudFront distribution in front of this API and attach WAF there.
+# 2. Switch from HTTP API (v2) to REST API (v1).
+
+# resource "aws_wafv2_web_acl_association" "api_gateway" {
+#   resource_arn = aws_apigatewayv2_stage.main.arn
+#   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
+# }
