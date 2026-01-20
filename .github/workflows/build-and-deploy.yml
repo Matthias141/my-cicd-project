@@ -250,9 +250,11 @@ jobs:
         EOF
 
         echo "Invoking green alias for health check..."
-        aws lambda invoke \
+        # FIX: Added --cli-binary-format raw-in-base64-out
+        RESPONSE=$(aws lambda invoke \
           --function-name $FUNCTION_NAME:green \
-          --payload file:///tmp/health-payload.json \
+          --payload '{"httpMethod":"GET","path":"/health","headers":{}}' \
+          --cli-binary-format raw-in-base64-out \
           --region ${{ env.AWS_REGION }} \
           /tmp/response.json
 
@@ -284,17 +286,11 @@ jobs:
 
         # Test 1: Root endpoint
         echo "Testing root endpoint..."
-        cat > /tmp/test1-payload.json << 'EOF'
-        {
-          "httpMethod": "GET",
-          "path": "/",
-          "headers": {}
-        }
-        EOF
-
+        # FIX: Added --cli-binary-format raw-in-base64-out
         aws lambda invoke \
           --function-name $FUNCTION_NAME:green \
-          --payload file:///tmp/test1-payload.json \
+          --payload '{"httpMethod":"GET","path":"/","headers":{}}' \
+          --cli-binary-format raw-in-base64-out \
           --region ${{ env.AWS_REGION }} \
           /tmp/test1.json
 
@@ -303,17 +299,11 @@ jobs:
 
         # Test 2: Protected endpoint (should fail without auth)
         echo "Testing authentication..."
-        cat > /tmp/test2-payload.json << 'EOF'
-        {
-          "httpMethod": "GET",
-          "path": "/protected",
-          "headers": {}
-        }
-        EOF
-
+        # FIX: Added --cli-binary-format raw-in-base64-out
         aws lambda invoke \
           --function-name $FUNCTION_NAME:green \
-          --payload file:///tmp/test2-payload.json \
+          --payload '{"httpMethod":"GET","path":"/protected","headers":{}}' \
+          --cli-binary-format raw-in-base64-out \
           --region ${{ env.AWS_REGION }} \
           /tmp/test2.json
 
