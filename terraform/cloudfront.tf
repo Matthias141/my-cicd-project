@@ -1,17 +1,6 @@
 # CloudFront Distribution for API Gateway
 # This enables WAF enforcement, edge caching, and DDoS protection
 # --------------------------------------------------------------------------
-# Origin Access Control (OAC)
-# --------------------------------------------------------------------------
-resource "aws_cloudfront_origin_access_control" "api_gateway" {
-  name                              = "${local.name_prefix}-api-oac"
-  description                       = "Origin Access Control for API Gateway"
-  origin_access_control_origin_type = "apigateway"  # Note: This should be "s3" if for S3; confirm if "apigateway" is supported
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-# --------------------------------------------------------------------------
 # CloudFront Distribution
 # --------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "api" {
@@ -24,9 +13,8 @@ resource "aws_cloudfront_distribution" "api" {
 
   # Origin: API Gateway
   origin {
-    domain_name              = replace(aws_apigatewayv2_api.main.api_endpoint, "https://", "")
-    origin_id                = "api-gateway"
-    origin_access_control_id = aws_cloudfront_origin_access_control.api_gateway.id
+    domain_name = replace(aws_apigatewayv2_api.main.api_endpoint, "https://", "")
+    origin_id   = "api-gateway"
 
     custom_origin_config {
       http_port                = 80
@@ -37,7 +25,7 @@ resource "aws_cloudfront_distribution" "api" {
       origin_keepalive_timeout = 5
     }
 
-    # Custom headers for API Gateway identification
+    # Custom headers for API Gateway identification (use this for validation in API Gateway)
     custom_header {
       name  = "X-CloudFront-Distribution"
       value = var.environment
@@ -48,12 +36,12 @@ resource "aws_cloudfront_distribution" "api" {
   # Default Cache Behavior (API Endpoints)
   # --------------------------------------------------------------------------
   default_cache_behavior {
-    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    target_origin_id       = "api-gateway"
-    compress               = true
+    allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    target_origin_id         = "api-gateway"
+    compress                 = true
     # 1. Cache Policy: Managed-CachingDisabled (Do not cache dynamic API responses)
-    cache_policy_id        = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
     # 2. Origin Request Policy: Managed-AllViewerExceptHostHeader (Pass all query strings, headers, and cookies to the backend)
     origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
     viewer_protocol_policy   = "redirect-to-https"
@@ -63,14 +51,14 @@ resource "aws_cloudfront_distribution" "api" {
   # Health Check Behavior (Static content)
   # --------------------------------------------------------------------------
   ordered_cache_behavior {
-    path_pattern           = "/health"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    target_origin_id       = "api-gateway"
-    compress               = true
+    path_pattern             = "/health"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD", "OPTIONS"]
+    target_origin_id         = "api-gateway"
+    compress                 = true
     # 1. Cache Policy: Managed-CachingOptimized (Cache this content efficiently)
-    cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-    viewer_protocol_policy = "redirect-to-https"
+    cache_policy_id          = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+    viewer_protocol_policy   = "redirect-to-https"
   }
 
   # --------------------------------------------------------------------------
