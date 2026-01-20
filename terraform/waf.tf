@@ -1,9 +1,11 @@
-# AWS WAF (Web Application Firewall) for API Gateway Protection
+# AWS WAF (Web Application Firewall) for CloudFront
+# NOTE: CloudFront requires CLOUDFRONT scope WAF (must be in us-east-1)
 
 resource "aws_wafv2_web_acl" "api_waf" {
   name        = "${local.name_prefix}-waf"
-  description = "WAF for ${var.project_name} ${var.environment} API Gateway"
-  scope       = "REGIONAL"
+  description = "WAF for ${var.project_name} ${var.environment} API via CloudFront"
+  scope       = "CLOUDFRONT"
+  provider    = aws.us_east_1  # CloudFront WAF must be in us-east-1
 
   default_action {
     allow {}
@@ -180,9 +182,11 @@ resource "aws_wafv2_web_acl" "api_waf" {
 # }
 
 # CloudWatch Log Group for WAF logs
-# IMPORTANT: WAF v2 requires log group names to start with "aws-wafv2-logs-"
+# IMPORTANT: For CloudFront WAF, log group must be in us-east-1
+# Log group name must start with "aws-waf-logs-" (not aws-wafv2-logs-)
 resource "aws_cloudwatch_log_group" "waf_logs" {
-  name              = "aws-wafv2-logs-${local.name_prefix}"
+  provider          = aws.us_east_1  # Must be in us-east-1 for CloudFront WAF
+  name              = "aws-waf-logs-${local.name_prefix}"
   retention_in_days = var.log_retention_days
 
   tags = local.common_tags
@@ -191,6 +195,7 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 # CloudWatch Logs Resource Policy for WAF
 # This allows WAF v2 to write logs to CloudWatch via the logs delivery service
 resource "aws_cloudwatch_log_resource_policy" "waf_logs_policy" {
+  provider    = aws.us_east_1  # Must be in us-east-1 for CloudFront WAF
   policy_name = "${local.name_prefix}-waf-logs-policy"
 
   policy_document = jsonencode({
