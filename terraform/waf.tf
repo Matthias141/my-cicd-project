@@ -2,8 +2,9 @@
 
 resource "aws_wafv2_web_acl" "api_waf" {
   name        = "${local.name_prefix}-waf"
-  description = "WAF for ${var.project_name} ${var.environment} API Gateway"
-  scope       = "REGIONAL"
+  description = "WAF for ${var.project_name} ${var.environment} API via CloudFront"
+  scope       = "CLOUDFRONT"
+  provider    = aws.us_east_1  # CloudFront WAF must be in us-east-1
 
   default_action {
     allow {}
