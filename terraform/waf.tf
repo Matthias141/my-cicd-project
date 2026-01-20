@@ -4,7 +4,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
   name        = "${local.name_prefix}-waf"
   description = "WAF for ${var.project_name} ${var.environment} API via CloudFront"
   scope       = "CLOUDFRONT"
-  provider    = aws.us_east_1  # CloudFront WAF must be in us-east-1
+  provider    = aws.us_east_1 # CloudFront WAF must be in us-east-1
 
   default_action {
     allow {}
@@ -248,6 +248,7 @@ resource "aws_wafv2_web_acl" "api_waf" {
 # CloudWatch Log Group for WAF logs
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "waf_logs" {
+  provider          = aws.us_east_1 # FIX: Must be in us-east-1 for CloudFront WAF
   name              = "aws-waf-logs-${local.name_prefix}"
   retention_in_days = var.log_retention_days
 
@@ -258,6 +259,7 @@ resource "aws_cloudwatch_log_group" "waf_logs" {
 # WAF Logging Configuration
 # -----------------------------------------------------------------------------
 resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
+  provider                = aws.us_east_1 # FIX: Ensure Terraform uses the correct region
   resource_arn            = aws_wafv2_web_acl.api_waf.arn
   log_destination_configs = [aws_cloudwatch_log_group.waf_logs.arn]
 
@@ -266,23 +268,10 @@ resource "aws_wafv2_web_acl_logging_configuration" "waf_logging" {
       name = "authorization"
     }
   }
-  
+   
   redacted_fields {
     single_header {
       name = "cookie"
     }
   }
 }
-
-# -----------------------------------------------------------------------------
-# WAF Association (DISABLED)
-# -----------------------------------------------------------------------------
-# NOTE: Direct association with HTTP APIs (API Gateway v2) is NOT supported by AWS WAFv2.
-# To protect this API, you must either:
-# 1. Place a CloudFront distribution in front of this API and attach WAF there.
-# 2. Switch from HTTP API (v2) to REST API (v1).
-
-# resource "aws_wafv2_web_acl_association" "api_gateway" {
-#   resource_arn = aws_apigatewayv2_stage.main.arn
-#   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
-# }
