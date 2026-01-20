@@ -5,7 +5,7 @@
 resource "aws_cloudfront_origin_access_control" "api_gateway" {
   name                              = "${local.name_prefix}-api-oac"
   description                       = "Origin Access Control for API Gateway"
-  origin_access_control_origin_type = "lambda"
+  origin_access_control_origin_type = "apigateway" # Changed from 'lambda' to 'apigateway' (Clean correctness fix)
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
@@ -25,11 +25,11 @@ resource "aws_cloudfront_distribution" "api" {
     origin_id   = "api-gateway"
 
     custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-      origin_read_timeout    = 60
+      http_port                = 80
+      https_port               = 443
+      origin_protocol_policy   = "https-only"
+      origin_ssl_protocols     = ["TLSv1.2"]
+      origin_read_timeout      = 60
       origin_keepalive_timeout = 5
     }
 
@@ -40,17 +40,21 @@ resource "aws_cloudfront_distribution" "api" {
     }
   }
 
-  # Default cache behavior
+  # --------------------------------------------------------------------------
+  # Default Cache Behavior (API Endpoints)
+  # --------------------------------------------------------------------------
   default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods   = ["GET", "HEAD", "OPTIONS"]
     target_origin_id = "api-gateway"
     compress         = true
 
-    # Use Managed-CachingDisabled policy (no caching for API)
+    # 1. Cache Policy: Managed-CachingDisabled 
+    # (Do not cache dynamic API responses)
     cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
 
-    # Use Managed-AllViewerExceptHostHeader origin request policy
+    # 2. Origin Request Policy: Managed-AllViewerExceptHostHeader
+    # (Pass all query strings, headers, and cookies to the backend)
     origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
 
     viewer_protocol_policy = "redirect-to-https"
@@ -58,18 +62,12 @@ resource "aws_cloudfront_distribution" "api" {
     default_ttl            = 0
     max_ttl                = 0
 
-    # Forward all headers to API Gateway (needed for API functionality)
-    forwarded_values {
-      query_string = true
-      headers      = ["*"]
-
-      cookies {
-        forward = "all"
-      }
-    }
+    # REMOVED: forwarded_values block (Conflicted with cache_policy_id)
   }
 
-  # Health check endpoint with shorter cache
+  # --------------------------------------------------------------------------
+  # Health Check Behavior (Static content)
+  # --------------------------------------------------------------------------
   ordered_cache_behavior {
     path_pattern     = "/health"
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -77,22 +75,17 @@ resource "aws_cloudfront_distribution" "api" {
     target_origin_id = "api-gateway"
     compress         = true
 
-    # Use Managed-CachingOptimized policy
+    # 1. Cache Policy: Managed-CachingOptimized
+    # (Cache this content efficiently)
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
 
     viewer_protocol_policy = "redirect-to-https"
+    # TTLs are controlled by the Policy, but these overrides are allowed if compatible
     min_ttl                = 0
-    default_ttl            = 5   # Cache health checks for 5 seconds
+    default_ttl            = 5
     max_ttl                = 10
 
-    forwarded_values {
-      query_string = false
-      headers      = []
-
-      cookies {
-        forward = "none"
-      }
-    }
+    # REMOVED: forwarded_values block (Conflicted with cache_policy_id)
   }
 
   # Custom error responses
@@ -138,28 +131,17 @@ resource "aws_cloudfront_distribution" "api" {
     error_caching_min_ttl = 0
   }
 
-  # Restrictions
   restrictions {
     geo_restriction {
       restriction_type = "none"
-      # Can be changed to "whitelist" or "blacklist" for geo-restrictions
     }
   }
 
-  # SSL Certificate (using default CloudFront certificate)
-  # For custom domain, replace with ACM certificate
   viewer_certificate {
     cloudfront_default_certificate = true
     minimum_protocol_version       = "TLSv1.2_2021"
     ssl_support_method             = "sni-only"
   }
-
-  # Logging configuration (optional)
-  # logging_config {
-  #   include_cookies = false
-  #   bucket          = aws_s3_bucket.cloudfront_logs.bucket_domain_name
-  #   prefix          = "cloudfront-logs/"
-  # }
 
   tags = merge(
     local.common_tags,
@@ -169,13 +151,17 @@ resource "aws_cloudfront_distribution" "api" {
   )
 }
 
-# Associate WAF with CloudFront
+# --------------------------------------------------------------------------
+# WAF Association
+# --------------------------------------------------------------------------
+# IMPORTANT: The WAF Web ACL (aws_wafv2_web_acl.api_waf) MUST be created 
+# with scope="CLOUDFRONT" and in region "us-east-1" for this association to work.
 resource "aws_wafv2_web_acl_association" "cloudfront" {
   resource_arn = aws_cloudfront_distribution.api.arn
   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
 }
 
-# CloudWatch Log Group for CloudFront access logs (optional, for detailed logging)
+# CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "cloudfront_logs" {
   name              = "/aws/cloudfront/${local.name_prefix}"
   retention_in_days = var.log_retention_days
