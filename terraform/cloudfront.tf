@@ -5,7 +5,7 @@
 resource "aws_cloudfront_origin_access_control" "api_gateway" {
   name                              = "${local.name_prefix}-api-oac"
   description                       = "Origin Access Control for API Gateway"
-  origin_access_control_origin_type = "apigateway" # Changed from 'lambda' to 'apigateway' (Clean correctness fix)
+  origin_access_control_origin_type = "apigateway"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
@@ -77,115 +77,4 @@ resource "aws_cloudfront_distribution" "api" {
 
     # 1. Cache Policy: Managed-CachingOptimized
     # (Cache this content efficiently)
-    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-
-    viewer_protocol_policy = "redirect-to-https"
-    # TTLs are controlled by the Policy, but these overrides are allowed if compatible
-    min_ttl                = 0
-    default_ttl            = 5
-    max_ttl                = 10
-
-    # REMOVED: forwarded_values block (Conflicted with cache_policy_id)
-  }
-
-  # Custom error responses
-  custom_error_response {
-    error_code            = 403
-    response_code         = 403
-    response_page_path    = "/error"
-    error_caching_min_ttl = 10
-  }
-
-  custom_error_response {
-    error_code            = 404
-    response_code         = 404
-    response_page_path    = "/error"
-    error_caching_min_ttl = 10
-  }
-
-  custom_error_response {
-    error_code            = 500
-    response_code         = 500
-    response_page_path    = "/error"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 502
-    response_code         = 502
-    response_page_path    = "/error"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 503
-    response_code         = 503
-    response_page_path    = "/error"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 504
-    response_code         = 504
-    response_page_path    = "/error"
-    error_caching_min_ttl = 0
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  viewer_certificate {
-    cloudfront_default_certificate = true
-    minimum_protocol_version       = "TLSv1.2_2021"
-    ssl_support_method             = "sni-only"
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${local.name_prefix}-cloudfront"
-    }
-  )
-}
-
-# --------------------------------------------------------------------------
-# WAF Association
-# --------------------------------------------------------------------------
-# IMPORTANT: The WAF Web ACL (aws_wafv2_web_acl.api_waf) MUST be created 
-# with scope="CLOUDFRONT" and in region "us-east-1" for this association to work.
-resource "aws_wafv2_web_acl_association" "cloudfront" {
-  resource_arn = aws_cloudfront_distribution.api.arn
-  web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
-}
-
-# CloudWatch Log Group
-resource "aws_cloudwatch_log_group" "cloudfront_logs" {
-  name              = "/aws/cloudfront/${local.name_prefix}"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
-
-# Outputs
-output "cloudfront_distribution_id" {
-  description = "CloudFront distribution ID"
-  value       = aws_cloudfront_distribution.api.id
-}
-
-output "cloudfront_distribution_arn" {
-  description = "CloudFront distribution ARN"
-  value       = aws_cloudfront_distribution.api.arn
-}
-
-output "cloudfront_domain_name" {
-  description = "CloudFront distribution domain name (use this for API access)"
-  value       = aws_cloudfront_distribution.api.domain_name
-}
-
-output "cloudfront_distribution_url" {
-  description = "CloudFront distribution URL"
-  value       = "https://${aws_cloudfront_distribution.api.domain_name}"
-}
+    cache_policy_id = "658327ea-f89d-4fab
