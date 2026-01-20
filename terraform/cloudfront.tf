@@ -61,8 +61,6 @@ resource "aws_cloudfront_distribution" "api" {
     min_ttl                = 0
     default_ttl            = 0
     max_ttl                = 0
-
-    # REMOVED: forwarded_values block (Conflicted with cache_policy_id)
   }
 
   # --------------------------------------------------------------------------
@@ -80,14 +78,42 @@ resource "aws_cloudfront_distribution" "api" {
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
 
     viewer_protocol_policy = "redirect-to-https"
-    # TTLs are controlled by the Policy, but these overrides are allowed if compatible
     min_ttl                = 0
     default_ttl            = 5
     max_ttl                = 10
-
-    # REMOVED: forwarded_values block (Conflicted with cache_policy_id)
   }
 
-  # Custom error responses
+  # --------------------------------------------------------------------------
+  # Custom Error Responses (FIXED SYNTAX)
+  # --------------------------------------------------------------------------
   custom_error_response {
-    error_code
+    error_code            = 403
+    response_code         = 403
+    response_page_path    = "/error"
+    error_caching_min_ttl = 10
+  }
+
+  custom_error_response {
+    error_code            = 404
+    response_code         = 404
+    response_page_path    = "/error"
+    error_caching_min_ttl = 10
+  }
+
+  custom_error_response {
+    error_code            = 500
+    response_code         = 500
+    response_page_path    = "/error"
+    error_caching_min_ttl = 0
+  }
+
+  custom_error_response {
+    error_code            = 502
+    response_code         = 502
+    response_page_path    = "/error"
+    error_caching_min_ttl = 0
+  }
+
+  custom_error_response {
+    error_code            = 503
+    response_code         = 503
