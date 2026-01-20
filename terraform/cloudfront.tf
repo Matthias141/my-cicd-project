@@ -77,4 +77,17 @@ resource "aws_cloudfront_distribution" "api" {
 
     # 1. Cache Policy: Managed-CachingOptimized
     # (Cache this content efficiently)
-    cache_policy_id = "658327ea-f89d-4fab
+    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+
+    viewer_protocol_policy = "redirect-to-https"
+    # TTLs are controlled by the Policy, but these overrides are allowed if compatible
+    min_ttl                = 0
+    default_ttl            = 5
+    max_ttl                = 10
+
+    # REMOVED: forwarded_values block (Conflicted with cache_policy_id)
+  }
+
+  # Custom error responses
+  custom_error_response {
+    error_code
