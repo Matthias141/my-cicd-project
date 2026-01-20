@@ -98,6 +98,14 @@
       "Resource": "*"
     },
     {
+      "Sid": "CloudFrontPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:*"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "S3Permissions",
       "Effect": "Allow",
       "Action": [

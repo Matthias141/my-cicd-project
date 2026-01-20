@@ -240,6 +240,15 @@ jobs:
       run: |
         FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
 
+        echo "Creating health check payload..."
+        cat > /tmp/health-payload.json << 'EOF'
+        {
+          "httpMethod": "GET",
+          "path": "/health",
+          "headers": {}
+        }
+        EOF
+
         echo "Invoking green alias for health check..."
         # FIX: Added --cli-binary-format raw-in-base64-out
         RESPONSE=$(aws lambda invoke \
@@ -247,17 +256,29 @@ jobs:
           --payload '{"httpMethod":"GET","path":"/health","headers":{}}' \
           --cli-binary-format raw-in-base64-out \
           --region ${{ env.AWS_REGION }} \
-          /tmp/response.json)
+          /tmp/response.json
 
-        STATUS_CODE=$(echo $RESPONSE | jq -r '.StatusCode')
+        echo "Lambda invoke response:"
+        cat /tmp/response.json
 
-        if [ "$STATUS_CODE" != "200" ]; then
-          echo "Health check failed with status $STATUS_CODE"
+        # Parse the response body from Lambda
+        RESPONSE_BODY=$(cat /tmp/response.json | jq -r '.body // empty')
+
+        if [ -z "$RESPONSE_BODY" ]; then
+          echo "❌ Health check failed: Empty response body"
+          exit 1
+        fi
+
+        # Check if response contains success status
+        STATUS=$(echo "$RESPONSE_BODY" | jq -r '.status // empty')
+
+        if [ "$STATUS" != "healthy" ]; then
+          echo "❌ Health check failed with status: $STATUS"
           cat /tmp/response.json
           exit 1
         fi
 
-        echo "✅ Health check passed"
+        echo "✅ Health check passed - Lambda is healthy"
 
     - name: Smoke Tests (Green Alias)
       run: |
@@ -273,6 +294,9 @@ jobs:
           --region ${{ env.AWS_REGION }} \
           /tmp/test1.json
 
+        echo "Root endpoint response:"
+        cat /tmp/test1.json
+
         # Test 2: Protected endpoint (should fail without auth)
         echo "Testing authentication..."
         # FIX: Added --cli-binary-format raw-in-base64-out
@@ -282,6 +306,9 @@ jobs:
           --cli-binary-format raw-in-base64-out \
           --region ${{ env.AWS_REGION }} \
           /tmp/test2.json
+
+        echo "Protected endpoint response (should be 401):"
+        cat /tmp/test2.json
 
         echo "✅ Smoke tests passed"
 
