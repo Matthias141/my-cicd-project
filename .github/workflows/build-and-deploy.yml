@@ -165,10 +165,18 @@ jobs:
 
     - name: Push to ECR
       run: |
-        docker push ${{ steps.meta.outputs.tags }}
-        docker tag ${{ steps.meta.outputs.tags }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        # Check if image already exists in ECR
+        IMAGE_EXISTS=$(aws ecr describe-images --repository-name ${{ env.ECR_REPOSITORY }} --image-ids imageTag=${{ github.sha }} --region ${{ env.AWS_REGION }} || echo "not_found")
 
+        if [[ "$IMAGE_EXISTS" == *"not_found"* ]]; then
+          echo "Image not found. Pushing..."
+          docker push ${{ steps.meta.outputs.tags }}
+          docker tag ${{ steps.meta.outputs.tags }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        else
+          echo "Image already exists in ECR. Skipping push to avoid Immutable Tag error."
+        fi
+        
   # Stage 2: Deploy to Lambda (Blue-Green)
   deploy:
     needs: build-and-scan
