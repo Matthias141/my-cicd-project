@@ -240,22 +240,43 @@ jobs:
       run: |
         FUNCTION_NAME="cicd-portfolio-${{ github.event.inputs.environment || 'staging' }}-api"
 
+        echo "Creating health check payload..."
+        cat > /tmp/health-payload.json << 'EOF'
+        {
+          "httpMethod": "GET",
+          "path": "/health",
+          "headers": {}
+        }
+        EOF
+
         echo "Invoking green alias for health check..."
-        RESPONSE=$(aws lambda invoke \
+        aws lambda invoke \
           --function-name $FUNCTION_NAME:green \
-          --payload '{"httpMethod":"GET","path":"/health","headers":{}}' \
+          --payload file:///tmp/health-payload.json \
           --region ${{ env.AWS_REGION }} \
-          /tmp/response.json)
+          /tmp/response.json
 
-        STATUS_CODE=$(echo $RESPONSE | jq -r '.StatusCode')
+        echo "Lambda invoke response:"
+        cat /tmp/response.json
 
-        if [ "$STATUS_CODE" != "200" ]; then
-          echo "Health check failed with status $STATUS_CODE"
+        # Parse the response body from Lambda
+        RESPONSE_BODY=$(cat /tmp/response.json | jq -r '.body // empty')
+
+        if [ -z "$RESPONSE_BODY" ]; then
+          echo "❌ Health check failed: Empty response body"
+          exit 1
+        fi
+
+        # Check if response contains success status
+        STATUS=$(echo "$RESPONSE_BODY" | jq -r '.status // empty')
+
+        if [ "$STATUS" != "healthy" ]; then
+          echo "❌ Health check failed with status: $STATUS"
           cat /tmp/response.json
           exit 1
         fi
 
-        echo "✅ Health check passed"
+        echo "✅ Health check passed - Lambda is healthy"
 
     - name: Smoke Tests (Green Alias)
       run: |
@@ -263,19 +284,41 @@ jobs:
 
         # Test 1: Root endpoint
         echo "Testing root endpoint..."
+        cat > /tmp/test1-payload.json << 'EOF'
+        {
+          "httpMethod": "GET",
+          "path": "/",
+          "headers": {}
+        }
+        EOF
+
         aws lambda invoke \
           --function-name $FUNCTION_NAME:green \
-          --payload '{"httpMethod":"GET","path":"/","headers":{}}' \
+          --payload file:///tmp/test1-payload.json \
           --region ${{ env.AWS_REGION }} \
           /tmp/test1.json
 
+        echo "Root endpoint response:"
+        cat /tmp/test1.json
+
         # Test 2: Protected endpoint (should fail without auth)
         echo "Testing authentication..."
+        cat > /tmp/test2-payload.json << 'EOF'
+        {
+          "httpMethod": "GET",
+          "path": "/protected",
+          "headers": {}
+        }
+        EOF
+
         aws lambda invoke \
           --function-name $FUNCTION_NAME:green \
-          --payload '{"httpMethod":"GET","path":"/protected","headers":{}}' \
+          --payload file:///tmp/test2-payload.json \
           --region ${{ env.AWS_REGION }} \
           /tmp/test2.json
+
+        echo "Protected endpoint response (should be 401):"
+        cat /tmp/test2.json
 
         echo "✅ Smoke tests passed"
 
