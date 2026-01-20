@@ -2,7 +2,7 @@
 # This enables WAF enforcement, edge caching, and DDoS protection
 
 # Origin Access Control for API Gateway
-resource "aws_cloudfront_origin_access_control" "api_gateway" {
+resource "aws_cloudfront_origin_access_control_origin_type = "api_gateway" {
   name                              = "${local.name_prefix}-api-oac"
   description                       = "Origin Access Control for API Gateway"
   origin_access_control_origin_type = "apigateway"
