@@ -10,6 +10,7 @@ resource "aws_cloudfront_distribution" "api" {
   price_class         = "PriceClass_100"  # Use only North America and Europe
   http_version        = "http2and3"
   wait_for_deployment = false
+  web_acl_id          = aws_wafv2_web_acl.api_waf.arn  # Associate WAF directly here
 
   # Origin: API Gateway
   origin {
@@ -124,14 +125,6 @@ resource "aws_cloudfront_distribution" "api" {
       Name = "${local.name_prefix}-cloudfront"
     }
   )
-}
-
-# --------------------------------------------------------------------------
-# WAF Association
-# --------------------------------------------------------------------------
-resource "aws_wafv2_web_acl_association" "cloudfront" {
-  resource_arn = aws_cloudfront_distribution.api.arn
-  web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
 }
 
 # --------------------------------------------------------------------------
