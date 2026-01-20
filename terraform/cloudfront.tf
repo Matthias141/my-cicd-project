@@ -1,8 +1,10 @@
 # CloudFront Distribution for API Gateway
 # This enables WAF enforcement, edge caching, and DDoS protection
 
-# Origin Access Control for API Gateway
-resource "aws_cloudfront_origin_access_control_origin_type = "api_gateway" {
+# --------------------------------------------------------------------------
+# Origin Access Control (OAC)
+# --------------------------------------------------------------------------
+resource "aws_cloudfront_origin_access_control" "api_gateway" {
   name                              = "${local.name_prefix}-api-oac"
   description                       = "Origin Access Control for API Gateway"
   origin_access_control_origin_type = "apigateway"
@@ -10,7 +12,9 @@ resource "aws_cloudfront_origin_access_control_origin_type = "api_gateway" {
   signing_protocol                  = "sigv4"
 }
 
+# --------------------------------------------------------------------------
 # CloudFront Distribution
+# --------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "api" {
   enabled             = true
   is_ipv6_enabled     = true
@@ -21,8 +25,9 @@ resource "aws_cloudfront_distribution" "api" {
 
   # Origin: API Gateway
   origin {
-    domain_name = replace(aws_apigatewayv2_api.main.api_endpoint, "https://", "")
-    origin_id   = "api-gateway"
+    domain_name              = replace(aws_apigatewayv2_api.main.api_endpoint, "https://", "")
+    origin_id                = "api-gateway"
+    origin_access_control_id = aws_cloudfront_origin_access_control.api_gateway.id
 
     custom_origin_config {
       http_port                = 80
@@ -33,7 +38,7 @@ resource "aws_cloudfront_distribution" "api" {
       origin_keepalive_timeout = 5
     }
 
-    # Custom headers for API Gateway
+    # Custom headers for API Gateway identification
     custom_header {
       name  = "X-CloudFront-Distribution"
       value = var.environment
@@ -58,9 +63,6 @@ resource "aws_cloudfront_distribution" "api" {
     origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 0
   }
 
   # --------------------------------------------------------------------------
@@ -78,13 +80,10 @@ resource "aws_cloudfront_distribution" "api" {
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 5
-    max_ttl                = 10
   }
 
   # --------------------------------------------------------------------------
-  # Custom Error Responses (FIXED SYNTAX)
+  # Custom Error Responses
   # --------------------------------------------------------------------------
   custom_error_response {
     error_code            = 403
@@ -156,7 +155,9 @@ resource "aws_wafv2_web_acl_association" "cloudfront" {
   web_acl_arn  = aws_wafv2_web_acl.api_waf.arn
 }
 
+# --------------------------------------------------------------------------
 # CloudWatch Log Group
+# --------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "cloudfront_logs" {
   name              = "/aws/cloudfront/${local.name_prefix}"
   retention_in_days = var.log_retention_days
@@ -164,7 +165,9 @@ resource "aws_cloudwatch_log_group" "cloudfront_logs" {
   tags = local.common_tags
 }
 
+# --------------------------------------------------------------------------
 # Outputs
+# --------------------------------------------------------------------------
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = aws_cloudfront_distribution.api.id
