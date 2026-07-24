@@ -144,7 +144,7 @@ This project demonstrates:
 
 ## 👤 Author
 
-**Your Name**
+**Ifedayo Idowu**
 - GitHub: [@Matthias141](https://github.com/Matthias141)
 - LinkedIn: [Your LinkedIn](https://linkedin.com/in/ifedayo-idowu)
 
