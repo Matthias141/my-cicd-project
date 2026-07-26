@@ -146,7 +146,7 @@ This project demonstrates:
 
 **Ifedayo Idowu**
 - GitHub: [@Matthias141](https://github.com/Matthias141)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/ifedayo-idowu)
+- LinkedIn: [https://www.linkedin.com/in/ifedayo-idowu-a18056149?utm_source=share_via&utm_content=profile&utm_medium=member_ios]
 
 ---
 
