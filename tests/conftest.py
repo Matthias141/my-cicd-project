@@ -17,16 +17,29 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import pytest
 
-from fixtures import TEST_API_KEY, TEST_API_KEY_INFO
+from fixtures import (
+    TEST_API_KEY,
+    TEST_API_KEY_INFO,
+    TEST_ADMIN_API_KEY,
+    TEST_ADMIN_KEY_INFO,
+)
 
 
 @pytest.fixture
 def patched_api_keys(monkeypatch):
     """
-    Inject a single known test key into auth.API_KEYS for the duration
-    of a test. monkeypatch auto-reverts afterward, so tests stay isolated
-    from each other and from whatever real _load_api_keys() produced.
+    Inject both known test keys (one non-admin, one admin) into
+    auth.API_KEYS for the duration of a test. Both are present
+    simultaneously so tests can verify a non-admin key is genuinely
+    rejected from an admin-only endpoint while a real admin key is
+    genuinely accepted, rather than mutating one key's permissions
+    between assertions. monkeypatch auto-reverts afterward, so tests
+    stay isolated from each other and from whatever real
+    _load_api_keys() produced.
     """
     import auth
-    monkeypatch.setattr(auth, "API_KEYS", {TEST_API_KEY: dict(TEST_API_KEY_INFO)})
+    monkeypatch.setattr(auth, "API_KEYS", {
+        TEST_API_KEY: dict(TEST_API_KEY_INFO),
+        TEST_ADMIN_API_KEY: dict(TEST_ADMIN_KEY_INFO),
+    })
     return auth.API_KEYS

@@ -25,3 +25,19 @@ TEST_API_KEY_INFO = {
     "permissions": ["read"],
     "secret": TEST_API_SECRET,
 }
+
+# Separate key/value from TEST_API_KEY on purpose: tests that need to prove
+# admin-only endpoints reject a non-admin key alongside accepting an admin
+# one need two distinct keys present in API_KEYS at the same time, not one
+# key whose permissions get mutated between assertions.
+TEST_ADMIN_API_KEY = "unittest-fixture-not-a-real-admin-key"
+TEST_ADMIN_API_SECRET = "unittest-fixture-not-a-real-admin-secret"
+
+TEST_ADMIN_KEY_INFO = {
+    "name": "Test Admin Client",
+    "tier": "premium",
+    "rate_limit": 1000,
+    "key_id": "unittest-fixture-admin-key-id",
+    "permissions": ["read", "write", "admin"],
+    "secret": TEST_ADMIN_API_SECRET,
+}

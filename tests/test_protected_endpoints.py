@@ -5,10 +5,19 @@ import pytest
 import json
 import sys
 import os
-from unittest.mock import patch, MagicMock
+import hmac
+import hashlib
+import time
 
 # Add app directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
+
+from fixtures import (
+    TEST_API_KEY,
+    TEST_API_KEY_INFO,
+    TEST_ADMIN_API_KEY,
+    TEST_ADMIN_KEY_INFO,
+)
 
 
 class TestProtectedEndpoints:
@@ -48,39 +57,29 @@ class TestProtectedEndpoints:
         data = json.loads(response.data)
         assert 'error' in data
 
-    @patch('app.auth.validate_api_key')
-    def test_protected_endpoint_with_valid_api_key(self, mock_validate, client):
+    def test_protected_endpoint_with_valid_api_key(self, patched_api_keys, client):
         """Test protected endpoint succeeds with valid API key"""
-        # Mock successful validation
-        mock_validate.return_value = {
-            'key_id': 'test-key-123',
-            'permissions': ['read', 'write'],
-            'rate_limit': 1000
-        }
-
+        # patched_api_keys (tests/conftest.py) injects TEST_API_KEY into the
+        # real auth.API_KEYS - this exercises the actual require_api_key()
+        # decorator and get_api_key_info() lookup end-to-end, not a mocked
+        # stand-in for them.
         response = client.get(
             '/dev/protected',
-            headers={'X-API-Key': 'test-key-123'}
+            headers={'X-API-Key': TEST_API_KEY}
         )
 
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data['status'] == 'success'
-        assert data['api_key_id'] == 'test-key-123'
+        assert data['api_key_id'] == TEST_API_KEY_INFO['key_id']
 
-    @patch('app.auth.validate_api_key')
-    def test_admin_endpoint_without_admin_permission(self, mock_validate, client):
+    def test_admin_endpoint_without_admin_permission(self, patched_api_keys, client):
         """Test admin endpoint returns 403 without admin permission"""
-        # Mock validation with non-admin user
-        mock_validate.return_value = {
-            'key_id': 'test-key-123',
-            'permissions': ['read'],  # No admin permission
-            'rate_limit': 1000
-        }
-
+        # TEST_API_KEY_INFO['permissions'] is ['read'] - genuinely lacks
+        # admin, rather than a mock asserting it does.
         response = client.get(
             '/dev/admin/stats',
-            headers={'X-API-Key': 'test-key-123'}
+            headers={'X-API-Key': TEST_API_KEY}
         )
 
         assert response.status_code == 403
@@ -88,19 +87,14 @@ class TestProtectedEndpoints:
         assert 'error' in data
         assert 'Insufficient permissions' in data['error']
 
-    @patch('app.auth.validate_api_key')
-    def test_admin_endpoint_with_admin_permission(self, mock_validate, client):
+    def test_admin_endpoint_with_admin_permission(self, patched_api_keys, client):
         """Test admin endpoint succeeds with admin permission"""
-        # Mock validation with admin user
-        mock_validate.return_value = {
-            'key_id': 'admin-key',
-            'permissions': ['read', 'write', 'admin'],
-            'rate_limit': 1000
-        }
-
+        # TEST_ADMIN_API_KEY is a distinct key from TEST_API_KEY, present in
+        # API_KEYS at the same time (see conftest.py) - proves the admin
+        # check is genuinely permission-based, not just "any key works."
         response = client.get(
             '/dev/admin/stats',
-            headers={'X-API-Key': 'admin-key'}
+            headers={'X-API-Key': TEST_ADMIN_API_KEY}
         )
 
         assert response.status_code == 200
@@ -134,28 +128,31 @@ class TestSignedEndpoints:
 
         assert response.status_code == 401
 
-    @patch('app.auth.validate_api_key')
-    @patch('app.auth.verify_hmac_signature')
-    def test_signed_endpoint_with_valid_signature(self, mock_verify, mock_validate, client):
+    def test_signed_endpoint_with_valid_signature(self, patched_api_keys, client):
         """Test signed endpoint succeeds with valid signature"""
-        # Mock successful validation and signature verification
-        mock_validate.return_value = {
-            'key_id': 'test-key',
-            'secret': 'test-secret',
-            'permissions': ['read', 'write'],
-            'rate_limit': 1000
-        }
-        mock_verify.return_value = True
-
-        import time
+        # Real HMAC over the exact raw body bytes being sent, using
+        # TEST_API_KEY_INFO['secret'] - exercises the actual
+        # validate_signature() implementation end-to-end (message =
+        # timestamp + raw body, HMAC-SHA256), not a mock asserting True.
+        # Body is serialized once and sent as raw data (not via the
+        # `json=` kwarg) so what's signed is byte-identical to what's sent.
+        payload = {'name': 'John Doe', 'email': 'john@example.com', 'age': 30, 'message': 'test'}
+        body = json.dumps(payload)
         timestamp = str(int(time.time()))
+        message = f"{timestamp}{body}".encode('utf-8')
+        signature = hmac.new(
+            TEST_API_KEY_INFO['secret'].encode('utf-8'),
+            message,
+            hashlib.sha256
+        ).hexdigest()
 
         response = client.post(
             '/dev/signed',
-            json={'name': 'John Doe', 'email': 'john@example.com', 'age': 30, 'message': 'test'},
+            data=body,
+            content_type='application/json',
             headers={
-                'X-API-Key': 'test-key',
-                'X-Signature': 'valid-signature',
+                'X-API-Key': TEST_API_KEY,
+                'X-Signature': signature,
                 'X-Timestamp': timestamp
             }
         )
@@ -165,27 +162,22 @@ class TestSignedEndpoints:
         assert data['status'] == 'success'
         assert data['security']['signature_verified'] is True
 
-    @patch('app.auth.validate_api_key')
-    @patch('app.auth.verify_hmac_signature')
-    def test_signed_endpoint_with_invalid_signature(self, mock_verify, mock_validate, client):
+    def test_signed_endpoint_with_invalid_signature(self, patched_api_keys, client):
         """Test signed endpoint fails with invalid signature"""
-        mock_validate.return_value = {
-            'key_id': 'test-key',
-            'secret': 'test-secret',
-            'permissions': ['read', 'write'],
-            'rate_limit': 1000
-        }
-        mock_verify.return_value = False  # Invalid signature
-
-        import time
+        # Valid API key, deliberately wrong signature - exercises the real
+        # validate_signature() rejecting a genuine mismatch, not a mock
+        # asserting False.
+        payload = {'name': 'John Doe', 'email': 'john@example.com', 'age': 30, 'message': 'test'}
+        body = json.dumps(payload)
         timestamp = str(int(time.time()))
 
         response = client.post(
             '/dev/signed',
-            json={'name': 'John Doe', 'email': 'john@example.com', 'age': 30, 'message': 'test'},
+            data=body,
+            content_type='application/json',
             headers={
-                'X-API-Key': 'test-key',
-                'X-Signature': 'invalid-signature',
+                'X-API-Key': TEST_API_KEY,
+                'X-Signature': 'deliberately-wrong-signature',
                 'X-Timestamp': timestamp
             }
         )
