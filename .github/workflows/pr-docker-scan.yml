@@ -23,6 +23,7 @@ jobs:
       contents: read
       security-events: write
       pull-requests: read
+      actions: read  # required by codeql-action/upload-sarif for its status-check API call
     steps:
       - name: Checkout
         uses: actions/checkout@v4
