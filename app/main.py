@@ -22,6 +22,10 @@ def add_security_headers(response):
     # Prevent MIME type sniffing
     response.headers['X-Content-Type-Options'] = 'nosniff'
 
+    # Force HTTPS on all future requests (2yr, matches AbiaEats' next.config.mjs
+    # for consistency across this account's repos)
+    response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
+
     # Enable XSS protection
     response.headers['X-XSS-Protection'] = '1; mode=block'
 
@@ -113,7 +117,12 @@ def validate_json(model: BaseModel):
 # APPLICATION ROUTES
 # ==============================================================================
 
-app = Flask(__name__)
+# NOTE: do NOT re-instantiate `app` here. It was previously reassigned to a
+# second Flask() object at this exact point, silently orphaning the
+# add_security_headers after_request hook registered on the first instance
+# above - every real response (including in production/Lambda) has been
+# sent with zero security headers as a result, not just a missing HSTS
+# header. Reuse the single `app` created above so the hook actually applies.
 
 # Create a Blueprint (a group of routes)
 bp = Blueprint('api', __name__)
