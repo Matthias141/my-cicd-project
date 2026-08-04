@@ -13,7 +13,7 @@ A production-ready, security-hardened serverless CI/CD pipeline demonstrating en
 - ✅ **Multi-Environment Pipeline** (Dev → Staging → Production)
 - ✅ **Blue-Green Deployments** (Zero-downtime releases)
 - ✅ **Automated Security Scanning** (Dependencies + Containers)
-- ✅ **Comprehensive Monitoring** (8+ CloudWatch Alarms + SNS)
+- ✅ **Comprehensive Monitoring** (9 CloudWatch Alarms + SNS)
 - ✅ **Infrastructure as Code** (100% Terraform-managed)
 - ✅ **Manual Approval Gates** (Production deployments)
 
@@ -151,7 +151,7 @@ X-XSS-Protection: 1; mode=block
 
 ## 📈 Monitoring & Observability
 
-### CloudWatch Alarms (8 Types)
+### CloudWatch Alarms (9 Types)
 
 | Alarm | Threshold | Action |
 |-------|-----------|--------|
@@ -163,6 +163,7 @@ X-XSS-Protection: 1; mode=block
 | API Latency | > 500ms avg | SNS Alert |
 | WAF Blocks | > 100 in 5min | SNS Alert (Attack) |
 | App Errors | > 10 in 5min | SNS Alert |
+| Green Version Errors | > 3 in 1min | SNS Alert (Rollback trigger) |
 
 ### Real-Time Dashboard
 

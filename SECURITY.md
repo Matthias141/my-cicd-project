@@ -16,7 +16,7 @@ This document outlines the comprehensive security measures implemented in this p
 ### AWS WAF (Web Application Firewall)
 
 **Protection Against:**
-- ✅ **DDoS Attacks**: Rate limiting (2000 requests per 5 minutes per IP)
+- ✅ **DDoS Attacks**: Rate limiting (2000 requests per minute per IP)
 - ✅ **SQL Injection**: Automatic detection and blocking
 - ✅ **XSS Attacks**: Cross-site scripting protection
 - ✅ **Geo-blocking**: Optional country-based blocking
@@ -97,7 +97,7 @@ All responses include comprehensive security headers:
 - **Production**: 500 burst, 250 req/s
 
 **WAF Rate Limiting:**
-- 2000 requests per 5 minutes per IP
+- 2000 requests per minute per IP
 - Automatic blocking with 429 response
 
 ---

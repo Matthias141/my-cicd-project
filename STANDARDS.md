@@ -63,7 +63,7 @@
 ### Testing
 - Validate Terraform code: `terraform validate`
 - Format code: `terraform fmt -recursive`
-- Check for security issues: `tfsec .`
+- Check for security issues: `tfsec .` (recommended local practice - not currently enforced in CI; only Gitleaks, pip-audit, Safety, Bandit, and Trivy are wired into .github/workflows/)
 - Run `terraform plan` in CI/CD before merge
 
 ## API Conventions

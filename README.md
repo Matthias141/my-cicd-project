@@ -79,7 +79,7 @@ my-cicd-project/
 - ✅ **Load test reports** with recommendations
 
 ### Monitoring & Observability
-- ✅ **8 CloudWatch alarms** (errors, throttles, latency, WAF blocks)
+- ✅ **9 CloudWatch alarms** (errors, throttles, latency, WAF blocks, green-version health)
 - ✅ **SNS notifications** for critical alerts
 - ✅ **CloudWatch dashboard** with real-time metrics
 - ✅ **X-Ray distributed tracing**

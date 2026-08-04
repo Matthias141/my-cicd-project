@@ -299,7 +299,7 @@ curl -X POST "$API_URL" \
 ### Rate Limiting
 
 **Per API Key:**
-- Default: 1000 requests per hour
+- Default: 1000 requests per minute
 - Configurable in AWS Secrets Manager
 
 **Response Headers:**
