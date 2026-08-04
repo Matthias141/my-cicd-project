@@ -1,0 +1,26 @@
+title = "my-cicd-project gitleaks configuration"
+
+# Extend the default ruleset (catches JWT tokens, AWS keys, generic
+# high-entropy secrets, etc.) rather than replacing it.
+[extend]
+useDefault = true
+
+# Scoped to the exact, verified-placeholder lines only — matched against
+# the full source line (regexTarget = "line"), not the bare secret value.
+# This matters because the same placeholder text ("test-api-key-12345")
+# is also hardcoded in app/auth.py and tests/*.py, and those ARE real
+# findings this repo's CLAUDE.md flags as an anti-pattern (hardcoded
+# demo credentials in source) — they must keep failing CI. Matching on
+# the full line, not the bare value, means only these two specific
+# documentation lines are ever allowlisted; any other line containing
+# these substrings (including a genuinely new secret added later) is
+# still scanned normally.
+[allowlist]
+description = "Verified placeholder values in documentation examples (not real secrets, not in code)"
+regexTarget = "line"
+regexes = [
+  # DEPLOYMENT.md:200 — curl example showing the X-API-Key header format
+  '''curl -H "X-API-Key: your-api-key-here" \\''',
+  # docs/ARCHITECTURE-DIAGRAM.md:498 — ASCII request-flow diagram
+  '''X-API-Key: test-api-key-12345\s+│''',
+]

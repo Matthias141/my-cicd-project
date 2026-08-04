@@ -1,0 +1,42 @@
+name: Security Scan
+
+# Modeled on matthias141/AbiaEats' .github/workflows/security.yml, the
+# reference implementation for this GitHub account. This repo had NO
+# secret-scanning step in CI, which is how a real database password,
+# API key, and JWT secret sat undetected in git history for 7 months
+# (commit f5fb808, remediated via git-filter-repo on 2026-08-04). See
+# CLAUDE.md for the full incident writeup.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gitleaks:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+    # pull-requests: read is required here — omitting it is the exact
+    # 403 bug (gitleaks-action listing PR commits) found and fixed in
+    # AbiaEats' security.yml. Do not remove it.
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history, not just the diff — a shallow scan only catches
+          # NEW leaks going forward, it can't verify the repo stays clean.
+          fetch-depth: 0
+
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Deliberately no continue-on-error, no `|| true`, and no
+        # equivalent bypass anywhere in this job — a finding must
+        # hard-fail the pipeline, matching the incident this workflow
+        # exists to prevent from recurring.
