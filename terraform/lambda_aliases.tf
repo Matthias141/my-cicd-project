@@ -42,6 +42,35 @@ resource "aws_lambda_alias" "live" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# Provisioned Concurrency (cold-start mitigation)
+# -----------------------------------------------------------------------------
+# Gated on enable_provisioned_concurrency (variables.tf) - not forced on for
+# every environment; prod.tfvars/staging.tfvars set it true, dev does not.
+#
+# Targets the "live" alias specifically, not blue/green: live is the only
+# alias api_gateway.tf's Lambda integration actually routes real traffic to
+# (see integration_uri = aws_lambda_alias.live.invoke_arn). blue/green exist
+# purely as deployment-process bookkeeping for the canary script; there's no
+# traffic hitting them directly to warm.
+#
+# NOTE: AWS requires the target alias to point at a real published version
+# number, not $LATEST. live.function_version starts as "$LATEST" above and
+# is deliberately left unmanaged by Terraform after that (lifecycle.
+# ignore_changes) - the blue-green deployment workflow is what actually
+# pins it to a numbered version out-of-band via the AWS CLI. This resource
+# is therefore only apply-able once that first deployment has run and "live"
+# is pointing at a real version; it cannot be applied against a freshly
+# created Lambda function that's still on $LATEST. Not tested against live
+# AWS here (account pending) - validated for HCL correctness only.
+resource "aws_lambda_provisioned_concurrency_config" "live" {
+  count = var.enable_provisioned_concurrency ? 1 : 0
+
+  function_name                     = aws_lambda_function.app.function_name
+  qualifier                         = aws_lambda_alias.live.name
+  provisioned_concurrent_executions = var.provisioned_concurrent_executions
+}
+
 # CloudWatch Alarm for Green Version Health Check
 resource "aws_cloudwatch_metric_alarm" "green_version_errors" {
   alarm_name          = "${local.name_prefix}-green-version-errors"
