@@ -10,6 +10,7 @@ This script simulates realistic user traffic patterns to test:
 
 from locust import HttpUser, task, between, events
 import json
+import os
 import random
 import time
 from datetime import datetime
@@ -26,7 +27,12 @@ class APIUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        self.api_key = "test-api-key-12345"  # Would come from environment in real scenario
+        # Real key must be provided via LOAD_TEST_API_KEY (e.g. one issued
+        # through the same Secrets Manager flow as app/auth.py - see
+        # terraform/secrets.tf and .env.example). The fallback is a
+        # deliberately non-functional placeholder, not a demo credential -
+        # requests against a real deployment will 401 until this is set.
+        self.api_key = os.environ.get("LOAD_TEST_API_KEY", "unittest-fixture-not-a-real-key")
         self.headers = {
             "Content-Type": "application/json",
             "X-API-Key": self.api_key
