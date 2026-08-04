@@ -53,7 +53,7 @@ class UserInput(BaseModel):
     """Example Pydantic model for user input validation"""
     name: str = Field(..., min_length=1, max_length=100, description="User name")
     email: EmailStr = Field(..., description="Valid email address")
-    age: Optional[int] = Field(None, ge=0, le=150, description="User age")
+    age: Optional[int] = Field(None, ge=0, lt=150, description="User age")
     message: Optional[str] = Field(None, max_length=500, description="User message")
 
     @validator('name')

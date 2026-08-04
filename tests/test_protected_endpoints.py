@@ -231,28 +231,22 @@ class TestInputValidation:
         assert 'error' in data
 
     def test_validate_endpoint_with_invalid_age(self, client):
-        """Test validation endpoint rejects an age above the model's max"""
-        # NOTE (flagged for human review): UserInput.age uses
-        # `le=150` (inclusive) in app/main.py, so age=150 itself is a
-        # VALID value per the model, not an invalid one - this test
-        # originally asserted 150 should be rejected, which contradicts
-        # the model's own explicit boundary. Genuinely ambiguous whether
-        # `le=150` was intentional (150 is the allowed max) or a mistake
-        # for `lt=150` (150 itself should be too old) - no other
-        # doc/spec states the intended business rule. Fixed to test
-        # unambiguously-over-the-boundary data (151) so the test matches
-        # current, deliberate model behavior rather than guessing at
-        # unstated intent.
-        invalid_data = {
-            'name': 'John Doe',
-            'email': 'john@example.com',
-            'age': 151,  # One above the model's le=150 max - unambiguously invalid
-            'message': 'Test'
-        }
+        """Test validation endpoint rejects an age at or above the model's max"""
+        # UserInput.age uses `lt=150` (exclusive) in app/main.py: 150 reads
+        # as a sanity-check ceiling, not a deliberately chosen valid value,
+        # so age >= 150 is rejected. Covers both the boundary itself (150)
+        # and comfortably beyond it (151).
+        for age in (150, 151):
+            invalid_data = {
+                'name': 'John Doe',
+                'email': 'john@example.com',
+                'age': age,
+                'message': 'Test'
+            }
 
-        response = client.post('/dev/validate', json=invalid_data)
+            response = client.post('/dev/validate', json=invalid_data)
 
-        assert response.status_code == 400
+            assert response.status_code == 400, f"age={age} should be rejected (model uses lt=150)"
 
     def test_validate_endpoint_with_missing_field(self, client):
         """Test validation endpoint rejects missing required fields"""
