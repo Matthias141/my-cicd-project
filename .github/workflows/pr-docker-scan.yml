@@ -1,0 +1,53 @@
+name: PR Docker Image Scan
+
+# Validation-only: builds the Docker image locally and scans it with Trivy.
+# No ECR login, no push, no deploy - the existing Trivy scans in
+# build-and-deploy.yml / deploy-staging.yml / deploy-prod.yml tag the image
+# with the ECR registry name, which requires AWS credentials just to build
+# the tag string. This job never needs AWS credentials at all, which also
+# means PR runs (including from less-trusted contexts) never get exposed to
+# repo deploy secrets.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'app/**'
+
+jobs:
+  trivy-scan:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image locally (no registry, no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: pr-validation:${{ github.sha }}
+
+      - name: Run Trivy Container Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: pr-validation:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

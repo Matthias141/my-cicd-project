@@ -1,0 +1,54 @@
+name: PR Terraform Validate
+
+# Validation-only: terraform validate is a pure syntax/type check with no
+# AWS API calls of its own - confirmed this session (git history) by running
+# it against a local backend with dummy credentials and seeing it succeed
+# independent of AWS reachability. The existing "Terraform Validate" step in
+# terraform-deploy.yml runs AFTER `terraform init` against the real S3
+# backend, which DOES require AWS credentials just to read remote state -
+# wrong shape for a PR check. This job uses `-backend=false` instead, so it
+# never touches AWS, never needs repo secrets, and works even though the AWS
+# account is currently suspended (see CLAUDE.md).
+#
+# Hard-blocking (no continue-on-error, no `|| true`): unlike the security
+# scanners in pr-python-security.yml, there's no legitimate "false positive"
+# case for broken HCL syntax - a validate failure means the Terraform is
+# genuinely invalid, which should block merge.
+#
+# Deliberately NOT running `terraform fmt -check` here - main currently has
+# real, pre-existing formatting drift (cloudfront.tf, both
+# environments/*.tfvars, lambda.tf, monitoring.tf, waf.tf) that would fail
+# immediately and block unrelated PRs. Logged as a separate follow-up: fix
+# the drift first, then gate on fmt.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+
+jobs:
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Init (no backend - syntax check only, no AWS access)
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
