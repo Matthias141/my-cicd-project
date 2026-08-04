@@ -21,3 +21,4 @@ COPY app/ ${LAMBDA_TASK_ROOT}/
 
 # CRITICAL CHANGE: Point to main.py and the 'handler' object we just added
 CMD ["main.handler"]
+# throwaway comment - triggers pr-docker-scan.yml for a live test, will be closed/deleted
