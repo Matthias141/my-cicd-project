@@ -213,8 +213,8 @@ def protected_endpoint():
     return jsonify({
         'status': 'success',
         'message': 'Access granted to protected resource',
-        'api_key_id': api_key_info['key_id'],
-        'permissions': api_key_info['permissions'],
+        'api_key_id': api_key_info.get('key_id', 'unknown'),
+        'permissions': api_key_info.get('permissions', []),
         'rate_limit_remaining': api_key_info.get('rate_limit_remaining', 'N/A')
     }), 200
 
@@ -243,7 +243,7 @@ def signed_endpoint(validated_data: UserInput):
     return jsonify({
         'status': 'success',
         'message': 'Signed request verified successfully',
-        'api_key_id': api_key_info['key_id'],
+        'api_key_id': api_key_info.get('key_id', 'unknown'),
         'data': {
             'name': validated_data.name,
             'email': validated_data.email,

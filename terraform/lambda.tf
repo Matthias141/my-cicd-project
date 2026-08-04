@@ -19,6 +19,9 @@ resource "aws_lambda_function" "app" {
       APP_VERSION = "terraform-managed"
       # AWS_REGION removed - Lambda sets this automatically
       LOG_LEVEL = var.environment == "prod" ? "INFO" : "DEBUG"
+      # Name only, not a value - tells auth.py which Secrets Manager
+      # secret to read API keys from at cold start. Safe as a plain env var.
+      APP_SECRETS_NAME = aws_secretsmanager_secret.app_secrets.name
     }
   }
 

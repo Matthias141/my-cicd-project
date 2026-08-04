@@ -89,7 +89,7 @@ jobs:
       if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
       env:
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
-        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_api_keys_json: ${{ secrets.API_KEYS_JSON }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "📋 Planning infrastructure for ${{ github.event.inputs.environment }} environment..."
@@ -99,7 +99,7 @@ jobs:
       if: github.event.inputs.action == 'apply'
       env:
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
-        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_api_keys_json: ${{ secrets.API_KEYS_JSON }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "🚀 Deploying infrastructure for ${{ github.event.inputs.environment }} environment..."
@@ -109,7 +109,7 @@ jobs:
       if: github.event.inputs.action == 'destroy'
       env:
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
-        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_api_keys_json: ${{ secrets.API_KEYS_JSON }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "🗑️  Destroying infrastructure for ${{ github.event.inputs.environment }} environment..."

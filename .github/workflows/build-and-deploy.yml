@@ -67,7 +67,7 @@ jobs:
       working-directory: terraform
       env:
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
-        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_api_keys_json: ${{ secrets.API_KEYS_JSON }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "📋 Planning infrastructure changes..."
@@ -79,7 +79,7 @@ jobs:
       working-directory: terraform
       env:
         TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
-        TF_VAR_api_key: ${{ secrets.API_KEY }}
+        TF_VAR_api_keys_json: ${{ secrets.API_KEYS_JSON }}
         TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
       run: |
         echo "🚀 Applying infrastructure changes..."

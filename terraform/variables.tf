@@ -63,8 +63,13 @@ variable "database_password" {
   sensitive   = true
 }
 
-variable "api_key" {
-  description = "API key - must be provided via terraform.tfvars or environment variable"
+variable "api_keys_json" {
+  description = <<-EOT
+    JSON-encoded map of API keys, e.g.:
+    {"<api-key-value>": {"name": "...", "tier": "free|premium", "rate_limit": 100, "key_id": "...", "permissions": ["read"], "secret": "<hmac-secret>"}}
+    Must be provided via TF_VAR_api_keys_json (CI) or terraform.tfvars (local,
+    gitignored) - never hardcode real key values in any committed file.
+  EOT
   type        = string
   sensitive   = true
 }

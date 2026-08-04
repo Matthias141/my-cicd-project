@@ -10,28 +10,86 @@ Provides:
 
 import hashlib
 import hmac
+import logging
 import time
 from functools import wraps
 from flask import request, jsonify
 import os
 import json
 
-# In production, these would come from AWS Secrets Manager
-# For demo purposes, we'll use environment variables
-API_KEYS = {
-    "test-api-key-12345": {
-        "name": "Test Client",
-        "tier": "free",
-        "rate_limit": 100,  # requests per minute
-        "secret": "test-secret-key-67890"
-    },
-    "prod-api-key-abcde": {
-        "name": "Production Client",
-        "tier": "premium",
-        "rate_limit": 1000,
-        "secret": "prod-secret-key-xyz123"
-    }
-}
+logger = logging.getLogger(__name__)
+
+
+def _load_api_keys_from_secrets_manager():
+    """
+    Cold-start load of API_KEYS from the AWS Secrets Manager secret
+    Terraform provisions (terraform/secrets.tf: aws_secretsmanager_secret.app_secrets).
+
+    APP_SECRETS_NAME is the secret's *name*, not a value - it's a plain
+    Lambda environment variable set by terraform/lambda.tf. Returns None
+    (never raises) if unavailable for any reason, so the caller can fall
+    through to the local-dev fallback.
+    """
+    secret_name = os.environ.get("APP_SECRETS_NAME")
+    if not secret_name:
+        return None
+
+    try:
+        import boto3
+        client = boto3.client("secretsmanager")
+        response = client.get_secret_value(SecretId=secret_name)
+        secret_data = json.loads(response["SecretString"])
+        api_keys_json = secret_data.get("api_keys")
+        if not api_keys_json:
+            return None
+        return json.loads(api_keys_json)
+    except Exception as e:
+        # No AWS creds, secret doesn't exist yet, malformed JSON, network
+        # error, etc. - none of these should ever crash module import.
+        logger.warning(f"Could not load API_KEYS from Secrets Manager: {e}")
+        return None
+
+
+def _load_api_keys_from_dotenv():
+    """
+    Local-dev fallback: read API_KEYS_JSON from a .env file (gitignored,
+    see .env.example for the template) via python-dotenv, or from an
+    already-exported environment variable of the same name.
+    """
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except Exception as e:
+        logger.warning(f"python-dotenv unavailable or .env failed to load: {e}")
+
+    raw = os.environ.get("API_KEYS_JSON")
+    if not raw:
+        return None
+
+    try:
+        return json.loads(raw)
+    except Exception as e:
+        logger.warning(f"API_KEYS_JSON environment variable is not valid JSON: {e}")
+        return None
+
+
+def _load_api_keys():
+    """
+    Zero-config case must degrade cleanly: if neither Secrets Manager nor
+    a local .env produced anything, API_KEYS is just empty - every
+    protected endpoint returns 401, nothing crashes at import time.
+    """
+    return (
+        _load_api_keys_from_secrets_manager()
+        or _load_api_keys_from_dotenv()
+        or {}
+    )
+
+
+# Populated once at module import (Lambda cold start / process start),
+# not per-request - see _load_api_keys() docstrings above for the
+# Secrets Manager -> .env -> empty-dict fallback chain.
+API_KEYS = _load_api_keys()
 
 # Simple in-memory rate limiting (in production, use Redis/DynamoDB)
 rate_limit_store = {}
