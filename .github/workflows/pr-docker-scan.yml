@@ -7,6 +7,16 @@ name: PR Docker Image Scan
 # the tag string. This job never needs AWS credentials at all, which also
 # means PR runs (including from less-trusted contexts) never get exposed to
 # repo deploy secrets.
+#
+# Results are uploaded as a plain build artifact rather than to the GitHub
+# Security tab: confirmed via live-PR testing that this repo has no "Code
+# scanning" section under Settings > Advanced Security (only Dependency
+# graph / Dependabot), meaning SARIF upload via codeql-action/upload-sarif
+# fails with "Code scanning is not enabled for this repository" - almost
+# certainly gated behind GitHub Advanced Security (paid for private repos),
+# same wall hit earlier with branch protection enforcement. Matches the
+# bandit-results.json artifact pattern already used in
+# pr-python-security.yml.
 
 on:
   pull_request:
@@ -21,8 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
-      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,12 +50,13 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: pr-validation:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'json'
+          output: 'trivy-results.json'
           severity: 'CRITICAL,HIGH'
 
-      - name: Upload Trivy Results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+      - name: Upload Trivy Results
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          name: trivy-results
+          path: trivy-results.json
