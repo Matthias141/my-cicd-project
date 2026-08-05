@@ -1,0 +1,61 @@
+name: PR Python Security Checks
+
+# Validation-only: pip-audit, Safety, and Bandit against app/ - none of
+# these have ever needed AWS credentials (confirmed against the existing
+# invocations in deploy-staging.yml / deploy-prod.yml / build-and-deploy.yml,
+# which run these same tools as plain pip installs with no AWS step before
+# them). No deploy step here, nothing touches real infrastructure.
+#
+# Non-blocking (|| true), matching this repo's existing majority convention
+# for these same tools (deploy-staging.yml's pip-audit/Safety, build-and-
+# deploy.yml's Safety/Bandit) rather than deploy-prod.yml's stricter
+# hard-fail variant. This is a deliberate choice, not an oversight: making
+# these hard-blocking on every PR from day one - before anyone has seen what
+# they actually flag on this codebase - risks blocking merges on findings
+# nobody has triaged yet. Flip to hard-blocking (drop the `|| true`) once
+# the initial findings have been reviewed.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+
+jobs:
+  python-security:
+    name: pip-audit, Safety, Bandit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run pip-audit (Dependency Vulnerability Scan)
+        run: |
+          pip install pip-audit
+          pip-audit -r app/requirements.txt || true
+
+      - name: Run Safety (Dependency Security Check)
+        run: |
+          pip install safety
+          safety check -r app/requirements.txt || true
+
+      - name: Run Bandit (Python Security)
+        run: |
+          pip install bandit
+          bandit -r app/ -f json -o bandit-results.json || true
+
+      - name: Upload Bandit Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-results
+          path: bandit-results.json
