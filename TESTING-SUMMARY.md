@@ -2,113 +2,56 @@
 
 ## Overview
 
-This document summarizes the comprehensive testing infrastructure and code standards added to ensure all enterprise features are production-ready and maintainable.
+This document summarizes the testing infrastructure and code standards for this
+project. Numbers below were verified against current code on `main` on
+2026-08-05 by running `pytest --collect-only` and the full suite directly —
+not carried over from any prior version of this document.
 
 ---
 
 ## ✅ What We've Built & Tested
 
-### 1. **Comprehensive Test Suite**
+### 1. **Test Suite**
 
-#### Authentication Tests (`tests/test_auth.py`) - 15 Test Cases
-- ✅ API key validation (success, invalid key, Secrets Manager errors)
-- ✅ HMAC signature verification (valid, invalid, expired timestamps)
-- ✅ Decorator functionality (missing key, valid key, invalid key)
-- ✅ Rate limiting (within limit, exceeded limit)
+#### App Tests (`tests/test_app.py`) - 2 Test Cases
+- ✅ Root endpoint (`test_home`)
+- ✅ Health check endpoint (`test_health`)
 
-**Coverage**: All authentication and authorization flows
+#### Authentication Tests (`tests/test_auth.py`) - 8 Test Cases
+- ✅ API key validation via `get_api_key_info()` (success, invalid key) - 2 cases
+- ✅ HMAC signature validation via `validate_signature()` (valid, invalid signature, invalid API key) - 3 cases
+- ✅ Rate limiting via `check_rate_limit()` (within limit, invalid key, exceeded limit) - 3 cases
 
-#### Protected Endpoints Tests (`tests/test_protected_endpoints.py`) - 20+ Test Cases
-- ✅ Public endpoints accessible without auth
-- ✅ Protected endpoints require API key
-- ✅ Admin endpoints require admin permission
-- ✅ Signed endpoints require HMAC signature
-- ✅ Input validation with Pydantic
-- ✅ Security headers present in all responses
+**Coverage**: Core authentication and rate-limiting logic. Signature tests
+compute real HMAC signatures rather than mocking the verification function.
 
-**Coverage**: All new API endpoints and security features
+#### Protected Endpoints Tests (`tests/test_protected_endpoints.py`) - 13 Test Cases
+- ✅ Public endpoints accessible without auth - 1 case
+- ✅ Protected endpoint access control (missing key, valid key, admin permission missing/present) - 4 cases
+- ✅ Signed endpoint access control (missing signature, valid signature, invalid signature) - 3 cases
+- ✅ Input validation via Pydantic (valid data, invalid email, invalid age boundary, missing field) - 4 cases
+- ✅ Security headers present on responses - 1 case
+
+**Coverage**: All current API endpoints, decorator-based auth, and input validation.
+
+**Total: 23 test cases across 3 files.**
+
+> Note: `tests/load_test.py` is a Locust load-testing script, not a pytest
+> module - it fails pytest collection in this environment because `locust`
+> isn't installed as a test dependency. This is expected; it's not part of
+> the unit/integration suite and is excluded from the counts above.
 
 ### 2. **Code Standards Documentation**
 
-Created `STANDARDS.md` with comprehensive guidelines:
-
-#### Python Standards
-- Type hints for all functions
-- PEP 8 compliance
-- Security best practices (no hardcoded secrets, input validation)
-- Error handling requirements
-- Logging standards (structured JSON logging)
-
-#### Terraform Standards
-- Variable usage and naming conventions
-- Security best practices (encryption, IAM, Secrets Manager)
-- Tagging requirements
-- Deployment procedures
-
-#### API Conventions
-- REST endpoint standards
-- Authentication headers (X-API-Key, X-Signature, X-Timestamp)
-- Error response format
-- Status code usage
-
-#### Testing Requirements
-- 80% code coverage minimum
-- Test both success and failure paths
-- Run pytest before every commit
+Guidelines live in `STANDARDS.md` covering Python standards, Terraform
+standards, API conventions, and testing requirements.
 
 ### 3. **Automated Validation Script**
 
-Created `scripts/validate-deployment.sh` - comprehensive validation tool:
-
-#### What It Validates
-
-**Infrastructure (Terraform)**
-- ✅ Configuration syntax (`terraform validate`)
-- ✅ Code formatting (`terraform fmt`)
-- ✅ All required files present
-
-**Application Code (Python)**
-- ✅ Unit tests pass (`pytest`)
-- ✅ Code linting (`flake8`)
-- ✅ Import structure
-- ✅ No syntax errors
-
-**AWS Resources** (if deployed)
-- ✅ Lambda function exists
-- ✅ Lambda aliases (blue, green, live)
-- ✅ ECR repository exists
-- ✅ CloudWatch log groups
-- ✅ CloudWatch alarms configured
-- ✅ CloudWatch dashboard exists
-- ✅ WAF Web ACL exists
-
-**API Endpoints**
-- ✅ Root endpoint (GET /)
-- ✅ Health check (GET /{env}/health)
-- ✅ Home endpoint (GET /{env}/)
-- ✅ Items with pagination (GET /{env}/items?page=1&limit=10)
-- ✅ Validation endpoint (POST /{env}/validate)
-- ✅ Protected endpoint auth (returns 401 without key)
-
-**Security Features**
-- ✅ X-Frame-Options header
-- ✅ X-Content-Type-Options header
-- ✅ Content-Security-Policy header
-- ✅ Strict-Transport-Security header
-- ✅ WAF configuration
-
-**Deployment Infrastructure**
-- ✅ Blue-green deployment script exists and is executable
-- ✅ Lambda aliases Terraform config
-- ✅ Load test scripts
-- ✅ Performance analysis tools
-
-**Documentation**
-- ✅ README.md
-- ✅ DEPLOYMENT.md
-- ✅ SECURITY.md
-- ✅ README_ADVANCED.md
-- ✅ STANDARDS.md
+`scripts/validate-deployment.sh` exists and covers Terraform syntax/formatting,
+Python tests/linting, AWS resource checks (when deployed), API endpoint checks,
+security header checks, and deployment infrastructure checks. Not re-verified
+line-by-line as part of this update - scope here is the test suite itself.
 
 ---
 
@@ -121,24 +64,17 @@ Created `scripts/validate-deployment.sh` - comprehensive validation tool:
 pip install -r tests/requirements-test.txt
 
 # Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ -v --cov=app --cov-report=html
+pytest tests/test_app.py tests/test_auth.py tests/test_protected_endpoints.py -v
 
 # Run specific test file
 pytest tests/test_auth.py -v
 ```
 
-### Run Validation Script
-
-```bash
-# Validate without AWS (local only)
-./scripts/validate-deployment.sh dev
-
-# Validate with AWS (includes live API tests)
-./scripts/validate-deployment.sh dev https://your-api-url.execute-api.us-east-1.amazonaws.com
-```
+> `tests/requirements-test.txt` lists `pytest-cov==4.1.0`, but it is **not
+> currently installed** in the verified environment - `pytest --cov=app`
+> fails with "unrecognized arguments: --cov=app" until it's installed. Run
+> `pip install -r tests/requirements-test.txt` first if you want coverage
+> output.
 
 ### Check Code Quality
 
@@ -159,24 +95,30 @@ mypy app/
 
 ### Authentication Module (`app/auth.py`)
 
-| Function | Test Cases | Coverage |
-|----------|-----------|----------|
-| `validate_api_key()` | 3 | ✅ 100% |
-| `verify_hmac_signature()` | 4 | ✅ 100% |
-| `require_api_key()` decorator | 5 | ✅ 100% |
-| Rate limiting | 2 | ✅ 100% |
+| Function | Test Cases |
+|----------|-----------|
+| `get_api_key_info()` | 2 |
+| `validate_signature()` | 3 |
+| `check_rate_limit()` | 3 |
 
 ### Protected Endpoints (`app/main.py`)
 
-| Endpoint | Test Cases | Coverage |
-|----------|-----------|----------|
-| `GET /protected` | 3 | ✅ 100% |
-| `POST /signed` | 3 | ✅ 100% |
-| `GET /admin/stats` | 2 | ✅ 100% |
-| `POST /validate` | 4 | ✅ 100% |
-| Security headers | 7 | ✅ 100% |
+| Endpoint / Feature | Test Cases |
+|----------|-----------|
+| Public endpoints | 1 |
+| `GET /protected` + `GET /admin/stats` (auth/permission checks) | 4 |
+| `POST /signed` | 3 |
+| `POST /validate` (Pydantic input validation) | 4 |
+| Security headers | 1 |
 
-**Overall Test Coverage**: ~85%
+**Coverage percentage**: Not stated. Coverage tooling (`pytest-cov`) is listed
+as a dependency but not installed in this environment, so no line/branch
+coverage percentage has actually been measured. Treat any coverage percentage
+you see elsewhere for this project as unverified until `pytest --cov` is run
+for real and a number is captured directly from that output.
+
+**Test run result (verified 2026-08-05)**: `23 passed, 0 failed` running
+`pytest tests/test_app.py tests/test_auth.py tests/test_protected_endpoints.py -v`.
 
 ---
 
@@ -185,7 +127,7 @@ mypy app/
 Before merging to main, ensure:
 
 ### Code Quality
-- [ ] All tests pass (`pytest tests/`)
+- [ ] All tests pass (`pytest tests/test_app.py tests/test_auth.py tests/test_protected_endpoints.py`)
 - [ ] Code is formatted (`black . && flake8`)
 - [ ] Type hints present on all functions
 - [ ] No hardcoded secrets or credentials
@@ -200,15 +142,14 @@ Before merging to main, ensure:
 
 ### Infrastructure
 - [ ] Terraform validated (`terraform validate`)
-- [ ] Terraform formatted (`terraform fmt -check`)
+- [ ] Terraform formatted (`terraform fmt -check`) - note: `main` currently
+      has real, pre-existing formatting drift (`cloudfront.tf`,
+      `environments/*.tfvars`, `lambda.tf`, `monitoring.tf`, `waf.tf`); this
+      is why the PR-only `pr-terraform-validate.yml` workflow deliberately
+      does not gate on `fmt -check` yet
 - [ ] All resources tagged appropriately
-- [ ] IAM policies follow least privilege
-
-### Documentation
-- [ ] README.md updated with new features
-- [ ] DEPLOYMENT.md includes deployment steps
-- [ ] Code comments for complex logic
-- [ ] API endpoints documented
+- [ ] IAM policies follow least privilege - **currently not true**: see
+      Known Gaps below
 
 ### Testing
 - [ ] Unit tests for new features
@@ -222,129 +163,122 @@ Before merging to main, ensure:
 
 ### ✅ Can Test Locally (No AWS Required)
 
-1. **Unit Tests**
-   ```bash
-   pytest tests/test_auth.py -v
-   pytest tests/test_protected_endpoints.py -v
-   ```
-
-2. **Code Quality**
-   ```bash
-   black --check app/ tests/
-   flake8 app/ --max-line-length=120
-   ```
-
-3. **Terraform Syntax**
-   ```bash
-   cd terraform
-   terraform validate
-   terraform fmt -check
-   ```
-
-4. **Documentation**
-   - All .md files present and complete
-   - Links in documentation are valid
+```bash
+pytest tests/test_app.py tests/test_auth.py tests/test_protected_endpoints.py -v
+black --check app/ tests/
+flake8 app/ --max-line-length=120
+cd terraform && terraform init -backend=false && terraform validate
+```
 
 ### 🚀 Requires AWS Deployment
 
-1. **Live API Testing**
-   - Endpoint accessibility
-   - Response times
-   - Security headers
-   - Authentication flows
+**Currently blocked**: the AWS account backing this project is suspended
+(see `CLAUDE.md`), so none of the below can actually be exercised right now
+- treat this section as a description of the intended checks, not something
+you can run today.
 
-2. **Infrastructure Validation**
-   - Lambda functions and aliases
-   - ECR repositories
-   - CloudWatch alarms
-   - WAF configuration
-
-3. **Blue-Green Deployment**
-   - Traffic shifting (10%→25%→50%→100%)
-   - Automatic rollback
-   - Health checks
-
-4. **Load Testing**
-   - Performance under load
-   - Stress testing
-   - Endurance testing
+1. **Live API Testing** - endpoint accessibility, response times, security headers, auth flows
+2. **Infrastructure Validation** - Lambda functions/aliases, ECR, CloudWatch alarms, WAF
+3. **Blue-Green Deployment** - the staged rollout script
+   (`scripts/blue-green-deploy.sh`) exists and works standalone, but is not
+   invoked by any workflow, and `lambda_aliases.tf`'s alias tracks `$LATEST`
+   rather than a published version - real weighted traffic shifting isn't
+   wired up yet regardless of AWS account status
+4. **Load Testing** - performance, stress, endurance testing
 
 ---
 
 ## 📝 Running Tests in CI/CD
 
-Tests run automatically in GitHub Actions:
+**Verified 2026-08-05: no GitHub Actions workflow in this repository runs
+`pytest` at all** - not on push, not on pull request, not in dev/staging/prod
+deploy. The 23 tests above currently only run when someone runs `pytest`
+manually. This is a real gap, not a hypothetical one - it was previously
+undocumented.
 
-### Dev Deployment
-```yaml
-- name: Run Tests
-  run: |
-    pip install -r tests/requirements-test.txt
-    pytest tests/ -v --cov=app
-```
+What CI *does* run today, confirmed by grepping `.github/workflows/`:
 
-### Staging Deployment
-```yaml
-- name: Security Scans
-  run: |
-    pip-audit -r app/requirements.txt
-    safety check -r app/requirements.txt
+- `deploy-staging.yml`: `pip-audit` and `safety check` (both non-blocking, `|| true`), plus a Trivy container scan
+- `deploy-prod.yml`: `pip-audit`, `safety check` (blocking), and `bandit` (non-blocking)
+- `build-and-deploy.yml`: `bandit` (non-blocking) and a Trivy container scan
+- `pr-python-security.yml`, `pr-terraform-validate.yml`, `pr-docker-scan.yml` (new this session): the same dependency/container/Terraform scans, now also on pull requests - see Known Gaps for the Trivy/Security-tab caveat
 
-- name: Container Scan
-  uses: aquasecurity/trivy-action@master
-```
+None of these run the unit test suite. `deploy-dev.yml` in particular has no
+test, lint, or security-scan step of any kind - it builds, pushes to ECR, and
+updates the Lambda function directly.
 
-### Production Deployment
-```yaml
-- name: Comprehensive Security Audit
-  run: |
-    pip install pip-audit safety bandit
-    pip-audit -r app/requirements.txt
-    safety check -r app/requirements.txt
-    bandit -r app/ -f json
-```
+---
+
+## 🚦 Known Gaps (as of 2026-08-05)
+
+Listed honestly rather than omitted, per `CLAUDE.md`'s "Current known state"
+and this session's logged follow-ups:
+
+- **No CI enforcement of the test suite at all** (see above) - passing tests
+  locally does not currently gate any deploy.
+- **AWS account is suspended** - nothing in this document's "Requires AWS
+  Deployment" section can actually be run against live infrastructure right now.
+- **`docs/iam-policy-github-actions.json` grants wildcard `Resource: "*"`**
+  for every service except IAM - unfixed, critical.
+- **"Canary releases" is not an accurate description of the deploy pipeline**:
+  the staged rollout script exists standalone but isn't wired into any
+  workflow, and the Lambda alias tracks `$LATEST` rather than a published
+  version, which blocks real weighted routing at the AWS API level regardless.
+- **CloudWatch alarms have zero confirmed SNS subscribers** (`alert_email`
+  unset in every `.tfvars`) - alarms fire into a void.
+- **Possible latent `actions: read` permission gap** in `deploy-staging.yml`'s
+  and `build-and-deploy.yml`'s existing Trivy + `upload-sarif` steps -
+  flagged during this session's `pr-docker-scan.yml` live-PR testing, not
+  yet verified for these two pre-existing workflows.
+- **This repo has no GitHub Advanced Security "Code scanning" feature
+  available** (only Dependency graph / Dependabot) - the new
+  `pr-docker-scan.yml` workflow uploads Trivy results as a plain build
+  artifact instead of to the Security tab because of this; the same
+  limitation likely affects any pre-existing SARIF uploads too.
+- **`terraform fmt` drift** exists on `main` in `cloudfront.tf`,
+  `environments/*.tfvars`, `lambda.tf`, `monitoring.tf`, and `waf.tf`.
+- **`pytest-cov` is not installed**, so no real code coverage percentage
+  currently exists for this project - don't cite one until it's actually run.
+
+## What's Actually Covered
+
+- Authentication: API key lookup, HMAC signature validation (real
+  computation, not mocked), rate limiting
+- Authorization: protected/admin endpoint permission checks
+- Input validation: Pydantic model validation including the age boundary
+  (`lt=150`, exclusive)
+- Security headers presence on responses
+- Cross-file test isolation (the shared `rate_limit_store` is now reset
+  between tests via `conftest.py`, fixing a real cross-file pollution bug
+  found during this session's verification work)
+
+This is real, verified coverage of the application's auth and validation
+logic. It is not a "production ready" claim - see Known Gaps above for what
+that would still require (CI enforcement of these tests being the most
+direct gap; the AWS/infrastructure items being separate, larger blockers).
 
 ---
 
 ## 🎓 Next Steps
 
-1. **Run Local Tests**
-   ```bash
-   pip install -r tests/requirements-test.txt
-   pytest tests/ -v --cov=app
-   ```
-
-2. **Deploy Staging**
-   - Go to GitHub Actions → Terraform Deploy Infrastructure
-   - Select: environment=staging, action=apply
-   - Wait for deployment to complete
-
-3. **Validate Staging Deployment**
-   ```bash
-   ./scripts/validate-deployment.sh staging <staging-api-url>
-   ```
-
-4. **Run Load Tests**
-   - Go to GitHub Actions → Load Test
-   - Select: environment=staging, test_type=baseline
-   - Review performance results
-
-5. **Deploy Production** (when ready)
-   - Follow same process with environment=prod
-   - Use blue-green deployment script for zero downtime
+1. **Wire the test suite into CI** - none of the existing workflows run it
+2. **Install and run `pytest-cov`** to get a real coverage number
+3. **Address the Known Gaps above**, roughly in order of severity: CI test
+   enforcement, IAM wildcard policy, then the deploy/infrastructure items
+4. Re-run `./scripts/validate-deployment.sh` once AWS access is restored
 
 ---
 
 ## 📚 Additional Resources
 
-- **Testing Guide**: `tests/README.md` (if created)
 - **Code Standards**: `STANDARDS.md`
 - **Deployment Guide**: `DEPLOYMENT.md`
 - **Security Guide**: `SECURITY.md`
 
 ---
 
-**Last Updated**: 2026-01-18
-**Test Coverage**: ~85%
-**All Critical Features**: ✅ Tested
-**Production Ready**: ✅ Yes (after staging validation)
+**Last Updated**: 2026-08-05
+**Test Results**: 23/23 passing (verified directly, not assumed)
+**Coverage**: Not currently measured (`pytest-cov` not installed)
+**Production Ready**: Not a blanket claim - see "What's Actually Covered" and
+"Known Gaps" above
