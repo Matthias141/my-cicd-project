@@ -6,3 +6,5 @@ email-validator==2.1.0
 jaraco.context>=6.1.0
 boto3==1.35.99
 python-dotenv==1.0.1
+
+# throwaway comment - triggers pr-python-security.yml for a live pytest test, will be closed/deleted
